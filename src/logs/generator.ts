@@ -11,6 +11,9 @@ const EVENT_TYPES = [
 ];
 const GEO_COUNTRIES = ["US", "RU", "CN", "IN", "BR", "GB", "DE", "FR"];
 
+const PROCESS_NAMES = ["chrome.exe", "svchost.exe", "explorer.exe", "node.exe", "python.exe", "powershell.exe", "cmd.exe", "bash", "sshd", "nginx"];
+const SUSPICIOUS_PROCESSES = ["mimikatz.exe", "nc.exe", "nmap.exe", "crypto_miner.exe", "unknown_payload.exe"];
+
 function getRandomItem(arr: any[]) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
@@ -50,7 +53,53 @@ async function generateLog() {
   }
 }
 
-console.log("Starting Log Generator in 5 seconds...");
+async function generateSystemData() {
+  const isProcess = Math.random() > 0.5;
+  const isSuspicious = Math.random() < 0.05;
+  
+  let payload;
+
+  if (isProcess) {
+    const procName = isSuspicious ? getRandomItem(SUSPICIOUS_PROCESSES) : getRandomItem(PROCESS_NAMES);
+    payload = {
+      type: 'process',
+      details: {
+        pid: Math.floor(Math.random() * 30000) + 100,
+        name: procName,
+        cpu_percent: isSuspicious ? Math.random() * 50 + 40 : Math.random() * 15,
+        memory_usage: isSuspicious ? Math.random() * 30 + 20 : Math.random() * 10,
+        exe_path: isSuspicious ? `C:\\Temp\\${procName}` : `C:\\Windows\\System32\\${procName}`,
+        status: 'running'
+      },
+      risk_score: isSuspicious ? Math.random() * 0.4 + 0.6 : Math.random() * 0.2,
+      flagged: isSuspicious
+    };
+  } else {
+    const remoteIp = isSuspicious ? getRandomItem(THREAT_IPS) : `${Math.floor(Math.random() * 254)}.${Math.floor(Math.random() * 254)}.${Math.floor(Math.random() * 254)}.${Math.floor(Math.random() * 254)}`;
+    payload = {
+      type: 'network',
+      details: {
+        local_address: `192.168.1.${Math.floor(Math.random() * 254)}:${Math.floor(Math.random() * 10000) + 30000}`,
+        remote_address: `${remoteIp}:${isSuspicious ? 4444 : 443}`,
+        status: 'ESTABLISHED',
+        pid: Math.floor(Math.random() * 30000) + 100
+      },
+      risk_score: isSuspicious ? Math.random() * 0.4 + 0.6 : Math.random() * 0.2,
+      flagged: isSuspicious
+    };
+  }
+
+  try {
+    await axios.post('http://localhost:3000/api/system/system-data', payload);
+    const color = isSuspicious ? '\x1b[31m' : '\x1b[36m';
+    console.log(`${color}[System] Generated ${payload.type} data (Suspicious: ${isSuspicious})\x1b[0m`);
+  } catch (error: any) {
+    console.error(`Failed to send system data to server: ${error.response?.status || error.message}`);
+  }
+}
+
+console.log("Starting Log & System Generator in 5 seconds...");
 setTimeout(() => {
   setInterval(generateLog, 2000);
+  setInterval(generateSystemData, 3500);
 }, 5000);
