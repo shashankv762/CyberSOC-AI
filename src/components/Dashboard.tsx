@@ -24,7 +24,7 @@ export default function Dashboard({ onSelectLog, onInvestigate }: DashboardProps
   ];
 
   const pieData = stats?.events_per_type ? Object.entries(stats.events_per_type).map(([name, value]) => ({
-    name: name.replace('_', ' ').toUpperCase(),
+    name: name.replace(/_/g, ' ').toUpperCase(),
     value
   })) : [];
 
@@ -52,12 +52,12 @@ export default function Dashboard({ onSelectLog, onInvestigate }: DashboardProps
         <div className="lg:col-span-2">
           <LoginChart />
         </div>
-        <div className="bg-soc-surface border border-soc-border rounded-xl p-6 h-[400px]">
+        <div className="bg-soc-surface border border-soc-border rounded-xl p-6 min-h-[400px] flex flex-col">
           <h3 className="font-bold mb-6 text-soc-text flex items-center gap-2">
             <PieChartIcon className="w-4 h-4 text-soc-purple" />
             Event Distribution
           </h3>
-          <div className="h-[280px]">
+          <div className="flex-1 min-h-[250px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -77,11 +77,11 @@ export default function Dashboard({ onSelectLog, onInvestigate }: DashboardProps
               </PieChart>
             </ResponsiveContainer>
           </div>
-          <div className="grid grid-cols-2 gap-2 mt-4">
+          <div className="flex flex-wrap justify-center gap-3 mt-4">
             {pieData.map((entry, i) => (
-              <div key={i} className="flex items-center gap-2 text-[10px] text-soc-muted">
-                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                <span className="truncate">{entry.name}</span>
+              <div key={i} className="flex items-center gap-1.5 text-xs text-soc-muted">
+                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                <span className="whitespace-nowrap">{entry.name}</span>
               </div>
             ))}
           </div>
