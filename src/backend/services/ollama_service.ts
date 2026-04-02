@@ -5,7 +5,7 @@ export const ollamaService = {
     return db.prepare(`
       SELECT a.*, l.source_ip, l.event_type, l.username, l.status_code, l.payload
       FROM alerts a
-      JOIN logs l ON a.log_id = l.id
+      LEFT JOIN logs l ON a.log_id = l.id
       WHERE a.id = ?
     `).get(alertId);
   },

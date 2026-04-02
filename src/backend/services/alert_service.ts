@@ -21,7 +21,7 @@ export const alertService = {
     let query = `
       SELECT a.*, l.source_ip, l.event_type, l.username, l.status_code, l.payload
       FROM alerts a
-      JOIN logs l ON a.log_id = l.id
+      LEFT JOIN logs l ON a.log_id = l.id
     `;
     const params: any[] = [];
     const conditions: string[] = [];
@@ -56,7 +56,7 @@ export const alertService = {
     return db.prepare(`
       SELECT a.*, l.source_ip, l.event_type, l.username, l.status_code, l.payload
       FROM alerts a
-      JOIN logs l ON a.log_id = l.id
+      LEFT JOIN logs l ON a.log_id = l.id
       WHERE a.id = ?
     `).get(id);
   },
