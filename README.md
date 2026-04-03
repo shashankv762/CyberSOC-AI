@@ -1,8 +1,8 @@
-# 🛡️ CyberSOC
+# 🛡️ CyberSOC AI Platform
 
 ![CyberSOC Banner](https://img.shields.io/badge/CyberSOC-AI--Powered_Security-0ea5e9?style=for-the-badge)
 
-CyberSOC is a real-time, AI-driven Security Operations Center (SOC) dashboard. Built with a modern React frontend and a robust Node.js/Express backend, it monitors system processes, network connections, and authentication logs. It utilizes custom machine learning algorithms to detect anomalies, generate alerts, and provide actionable mitigations.
+CyberSOC is a real-time, AI-driven Security Operations Center (SOC) platform. Built with a modern React frontend and a robust Node.js/Express backend, it monitors system processes, network connections, and authentication logs. It utilizes custom machine learning algorithms to detect anomalies, generate alerts, and provide actionable mitigations.
 
 ## ✨ Key Features
 
@@ -12,7 +12,7 @@ CyberSOC is a real-time, AI-driven Security Operations Center (SOC) dashboard. B
 - **🔍 Advanced Log Filtering:** Filter live logs by event type, source IP, and anomaly status directly from the UI.
 - **🚨 Smart Alerts:** Automated alert generation with AI-explained reasons and suggested mitigation steps.
 - **💬 Security Chatbot:** Integrated assistant for security context and queries.
-- **🔒 Secure Authentication:** JWT-based user authentication and secure API endpoints.
+- **🔒 Secure Authentication & User Management:** Integrated with Firebase Authentication (Google Sign-In) and Firestore for role-based access control (RBAC).
 
 ## 🛠️ Tech Stack
 
@@ -22,10 +22,12 @@ CyberSOC is a real-time, AI-driven Security Operations Center (SOC) dashboard. B
 - Tailwind CSS
 - Recharts (Data Visualization)
 - Lucide React (Icons)
+- Firebase SDK (Auth & Firestore)
 
 **Backend:**
 - Node.js & Express
-- SQLite (better-sqlite3)
+- Firebase Admin SDK (Token verification & Firestore access)
+- SQLite (better-sqlite3) for local log storage
 - Custom AI/ML Engine (`feature_extractor`, `anomaly_detector`, `explainer`)
 
 ## 🚀 Getting Started
@@ -33,6 +35,7 @@ CyberSOC is a real-time, AI-driven Security Operations Center (SOC) dashboard. B
 ### Prerequisites
 - Node.js (v18 or higher)
 - Linux environment (required for real-time `ps` and `ss` system monitoring commands)
+- Firebase Project (with Authentication and Firestore enabled)
 
 ### Installation
 
@@ -47,13 +50,26 @@ CyberSOC is a real-time, AI-driven Security Operations Center (SOC) dashboard. B
    npm install
    ```
 
-3. **Set up environment variables**
+3. **Set up Firebase Configuration**
+   - Create a `firebase-applet-config.json` file in the root directory with your Firebase project configuration:
+   ```json
+   {
+     "projectId": "your-project-id",
+     "appId": "your-app-id",
+     "apiKey": "your-api-key",
+     "authDomain": "your-auth-domain",
+     "firestoreDatabaseId": "(default)"
+   }
+   ```
+   - Make sure to set up Firestore Security Rules using the provided `firestore.rules` file.
+
+4. **Set up environment variables**
    Copy the example environment file and configure your secrets:
    ```bash
    cp .env.example .env
    ```
 
-4. **Run the development server**
+5. **Run the development server**
    ```bash
    npm run dev
    ```
@@ -73,14 +89,19 @@ npm start
 ```text
 /
 ├── server.ts                 # Express backend entry point & Vite middleware
+├── firebase-applet-config.json # Firebase configuration
+├── firestore.rules           # Firestore security rules
 ├── src/
 │   ├── ai/                   # AI/ML logic (Anomaly detection, feature extraction)
 │   ├── api/                  # Frontend API client (Axios)
 │   ├── backend/              # Backend logic
 │   │   ├── routes/           # Express API routes (auth, logs, system, alerts)
 │   │   ├── services/         # Business logic (log processing, system monitoring)
+│   │   ├── middleware/       # Auth middleware (Firebase Admin token verification)
+│   │   ├── firebaseAdmin.ts  # Firebase Admin SDK initialization
 │   │   └── database.ts       # SQLite database initialization
 │   ├── components/           # React UI components (Dashboard, Panels, Charts)
+│   ├── firebase.ts           # Firebase client initialization
 │   └── hooks/                # Custom React hooks (e.g., usePolling)
 ├── agent/                    # Python-based external agents (optional)
 └── package.json              # Project dependencies and scripts
