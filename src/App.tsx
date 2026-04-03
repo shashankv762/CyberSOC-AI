@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import LogFeed from './components/LogFeed';
@@ -13,6 +13,9 @@ import UserManagement from './components/UserManagement';
 import { RefreshCw, Clock } from 'lucide-react';
 import { api } from './api/client';
 import { motion, AnimatePresence } from 'motion/react';
+import { Toaster, toast } from 'react-hot-toast';
+import { auth } from './firebase';
+import { signOut } from 'firebase/auth';
 
 export default function App() {
   const [user, setUser] = useState(() => {
@@ -24,6 +27,7 @@ export default function App() {
   const [chatContextAlertId, setChatContextAlertId] = useState(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [alertCount, setAlertCount] = useState(0);
+  const seenAlertIds = useRef(new Set());
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -32,18 +36,40 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    const fetchAlertCount = async () => {
+    const fetchAlerts = async () => {
       try {
         const res = await api.getAlerts({ acknowledged: false });
         if (Array.isArray(res.data)) {
           setAlertCount(res.data.length);
+          
+          // Check for new critical alerts
+          res.data.forEach(alert => {
+            if (!seenAlertIds.current.has(alert.id)) {
+              seenAlertIds.current.add(alert.id);
+              if (alert.severity === 'Critical') {
+                toast.error(`CRITICAL ALERT: ${alert.reason}`, {
+                  duration: 6000,
+                  position: 'top-right',
+                  style: {
+                    background: '#1e1e2e',
+                    color: '#ef4444',
+                    border: '1px solid rgba(239, 68, 68, 0.5)',
+                  },
+                  iconTheme: {
+                    primary: '#ef4444',
+                    secondary: '#1e1e2e',
+                  },
+                });
+              }
+            }
+          });
         }
       } catch (err) {
-        console.error("Failed to fetch alert count:", err);
+        console.error("Failed to fetch alerts:", err);
       }
     };
-    fetchAlertCount();
-    const interval = setInterval(fetchAlertCount, 10000);
+    fetchAlerts();
+    const interval = setInterval(fetchAlerts, 10000);
     return () => clearInterval(interval);
   }, [user]);
 
@@ -55,7 +81,12 @@ export default function App() {
     return () => window.removeEventListener('soc_unauthorized', handleUnauthorized);
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error("Firebase sign out error", err);
+    }
     localStorage.removeItem('soc_token');
     localStorage.removeItem('soc_user');
     setUser(null);
@@ -127,6 +158,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-soc-bg text-soc-text flex dark">
+      <Toaster />
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} alertCount={alertCount} userRole={user.role} />
       
       <main className="flex-1 ml-64 flex flex-col min-h-screen relative">

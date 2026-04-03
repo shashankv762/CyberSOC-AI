@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { formatDistanceToNow } from 'date-fns';
 import { ShieldAlert, Check, Search, Settings, X, Save } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'react-hot-toast';
 
 interface AlertsPanelProps {
   onInvestigate: (alert: any) => void;
@@ -27,8 +28,23 @@ export default function AlertsPanel({ onInvestigate }: AlertsPanelProps) {
 
   const handleAcknowledge = async (e, id) => {
     e.stopPropagation();
-    await api.acknowledgeAlert(id, true);
-    refresh();
+    try {
+      await api.acknowledgeAlert(id, true);
+      toast.success('Alert acknowledged', {
+        style: {
+          background: '#1e1e2e',
+          color: '#10b981',
+          border: '1px solid rgba(16, 185, 129, 0.5)',
+        },
+        iconTheme: {
+          primary: '#10b981',
+          secondary: '#1e1e2e',
+        },
+      });
+      refresh();
+    } catch (err) {
+      toast.error('Failed to acknowledge alert');
+    }
   };
 
   const handleSaveSettings = async () => {
