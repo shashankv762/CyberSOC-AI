@@ -2,10 +2,11 @@ import { Router } from "express";
 import { db } from "../database.js";
 import { authUtils } from "../utils/auth.js";
 import { logService } from "../services/log_service.js";
+import { loginLimiter } from "../middleware/rateLimit.js";
 
 const router = Router();
 
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
     const user = db.prepare("SELECT * FROM users WHERE username = ?").get(username) as any;
