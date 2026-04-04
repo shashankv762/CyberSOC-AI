@@ -51,5 +51,10 @@ export const api = {
   getUsers: () => client.get('/users'),
   createUser: (userData) => client.post('/users', userData),
   updateUser: (id, userData) => client.put(`/users/${id}`, userData),
-  deleteUser: (id) => client.delete(`/users/${id}`)
+  deleteUser: (id) => client.delete(`/users/${id}`),
+  
+  // IPS Endpoints
+  getBlockedIps: () => client.get('/ips/blocked'),
+  blockIp: (ip, reason) => client.post('/ips/block', { ip, reason }),
+  unblockIp: (ip) => client.delete(`/ips/unblock/${ip}`)
 };

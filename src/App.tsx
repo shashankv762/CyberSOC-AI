@@ -10,12 +10,15 @@ import ProcessPanel from './components/ProcessPanel';
 import NetworkPanel from './components/NetworkPanel';
 import ForensicsPanel from './components/ForensicsPanel';
 import UserManagement from './components/UserManagement';
+import IPSManagement from './components/IPSManagement';
 import { RefreshCw, Clock } from 'lucide-react';
 import { api } from './api/client';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster, toast } from 'react-hot-toast';
 import { auth } from './firebase';
 import { signOut } from 'firebase/auth';
+
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export default function App() {
   const [user, setUser] = useState(() => {
@@ -27,7 +30,15 @@ export default function App() {
   const [chatContextAlertId, setChatContextAlertId] = useState(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [alertCount, setAlertCount] = useState(0);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const seenAlertIds = useRef(new Set());
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
+      setIsAuthReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -92,8 +103,23 @@ export default function App() {
     setUser(null);
   };
 
+  if (!isAuthReady) {
+    return (
+      <div className="min-h-screen bg-soc-bg flex items-center justify-center dark">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-soc-blue/30 border-t-soc-blue rounded-full animate-spin"></div>
+          <div className="text-soc-blue font-mono text-sm uppercase tracking-widest animate-pulse">Initializing Secure Connection...</div>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) {
-    return <Login onLoginSuccess={setUser} />;
+    return (
+      <ErrorBoundary>
+        <Login onLoginSuccess={setUser} />
+      </ErrorBoundary>
+    );
   }
 
   const handleInvestigate = (incident) => {
@@ -140,6 +166,8 @@ export default function App() {
         return <ForensicsPanel />;
       case 'users':
         return user.role === 'admin' ? <UserManagement /> : <div className="p-8 text-soc-red">Unauthorized</div>;
+      case 'ips':
+        return user.role === 'admin' ? <IPSManagement /> : <div className="p-8 text-soc-red">Unauthorized</div>;
       case 'chatbot':
         return (
           <div className="h-[calc(100vh-160px)] glass-panel rounded-2xl overflow-hidden flex flex-col items-center justify-center p-12 text-center relative">
@@ -201,18 +229,20 @@ export default function App() {
 
         {/* Content Area */}
         <div className="flex-1 p-8 overflow-x-hidden">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className="h-full"
-            >
-              {renderContent()}
-            </motion.div>
-          </AnimatePresence>
+          <ErrorBoundary>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="h-full"
+              >
+                {renderContent()}
+              </motion.div>
+            </AnimatePresence>
+          </ErrorBoundary>
         </div>
       </main>
 

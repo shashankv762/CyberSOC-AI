@@ -1,5 +1,6 @@
 import { db } from "../database.js";
 import { alertService } from "./alert_service.js";
+import { ipsService } from "./ips_service.js";
 import { featureExtractor } from "../../ai/feature_extractor.js";
 import { anomalyDetector } from "../../ai/anomaly_detector.js";
 import { explainer } from "../../ai/explainer.js";
@@ -26,7 +27,7 @@ export const logService = {
       
       // Assign severity
       let severity = "Low";
-      if (score > 0.7) severity = "Critical";
+      if (score > 0.85) severity = "Critical";
       else if (score > 0.4) severity = "Medium";
       
       // 5. Create alert
@@ -37,6 +38,23 @@ export const logService = {
         score,
         mitigations
       });
+
+      // 6. IPS Action: Automatically block IP if score is critically high (> 0.85)
+      if (score > 0.85 && logData.source_ip) {
+        const blockReason = `Automated IPS Block: Critical anomaly score (${score.toFixed(2)}) detected. Reason: ${reason}`;
+        const blocked = ipsService.blockIp(logData.source_ip, blockReason);
+        
+        if (blocked) {
+          // Generate a specific alert for the IPS action
+          alertService.createAlert({
+            log_id: logId,
+            severity: "Critical",
+            reason: `[IPS ACTION TAKEN] IP ${logData.source_ip} has been automatically blocked.`,
+            score: 1.0,
+            mitigations: `Administrator review required. To unblock, navigate to the IPS settings. Original trigger: ${reason}`
+          });
+        }
+      }
     }
     
     return { log_id: logId, is_anomaly: isAnomaly, alert_id: alertId };

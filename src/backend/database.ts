@@ -115,6 +115,15 @@ export async function initDb() {
       )
     `);
 
+    // Blocked IPs Table (IPS)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS blocked_ips (
+        ip VARCHAR(45) PRIMARY KEY,
+        reason TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Seed admin user if not exists
     const adminExists = db.prepare("SELECT * FROM users WHERE username = 'admin'").get();
     if (!adminExists) {

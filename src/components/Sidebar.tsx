@@ -21,6 +21,7 @@ export default function Sidebar({ activeTab, setActiveTab, alertCount, userRole 
   ];
 
   if (userRole === 'admin') {
+    menuItems.push({ id: 'ips', label: 'IPS', icon: ShieldCheck });
     menuItems.push({ id: 'users', label: 'Users', icon: Users });
   }
 

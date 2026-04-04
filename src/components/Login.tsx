@@ -61,7 +61,12 @@ export default function Login({ onLoginSuccess }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [asyncError, setAsyncError] = useState<Error | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  if (asyncError) {
+    throw asyncError;
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -93,7 +98,11 @@ export default function Login({ onLoginSuccess }) {
       try {
         userSnap = await getDoc(userRef);
       } catch (err) {
-        handleFirestoreError(err, OperationType.GET, `users/${user.uid}`);
+        try {
+          handleFirestoreError(err, OperationType.GET, `users/${user.uid}`);
+        } catch (e: any) {
+          setAsyncError(e);
+        }
         return;
       }
       
@@ -110,7 +119,11 @@ export default function Login({ onLoginSuccess }) {
       try {
         await setDoc(userRef, userData, { merge: true });
       } catch (err) {
-        handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
+        try {
+          handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
+        } catch (e: any) {
+          setAsyncError(e);
+        }
         return;
       }
 

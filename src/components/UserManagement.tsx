@@ -61,6 +61,7 @@ export default function UserManagement() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [asyncError, setAsyncError] = useState<Error | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
   
@@ -68,16 +69,29 @@ export default function UserManagement() {
     role: 'analyst'
   });
 
+  if (asyncError) {
+    throw asyncError;
+  }
+
   useEffect(() => {
+    if (!auth.currentUser) {
+      setError('You must be logged in via Google (Firebase) to manage users.');
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
       const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setUsers(usersData);
       setLoading(false);
     }, (err) => {
       console.error(err);
-      setError('Failed to fetch users from Firestore');
       setLoading(false);
-      handleFirestoreError(err, OperationType.LIST, 'users');
+      try {
+        handleFirestoreError(err, OperationType.LIST, 'users');
+      } catch (e: any) {
+        setAsyncError(e);
+      }
     });
 
     return () => unsubscribe();
@@ -109,7 +123,11 @@ export default function UserManagement() {
     } catch (err: any) {
       setError(err.message || 'Operation failed');
       toast.error('Failed to update user');
-      handleFirestoreError(err, OperationType.UPDATE, `users/${editingUser?.id}`);
+      try {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${editingUser?.id}`);
+      } catch (e: any) {
+        setAsyncError(e);
+      }
     }
   };
 
@@ -121,7 +139,11 @@ export default function UserManagement() {
     } catch (err: any) {
       setError(err.message || 'Failed to delete user');
       toast.error('Failed to delete user');
-      handleFirestoreError(err, OperationType.DELETE, `users/${id}`);
+      try {
+        handleFirestoreError(err, OperationType.DELETE, `users/${id}`);
+      } catch (e: any) {
+        setAsyncError(e);
+      }
     }
   };
 
