@@ -128,6 +128,8 @@ export default function App() {
 
   const handleAskAI = (incident: any) => {
     setChatContextData(incident);
+    setSelectedIncident(null);
+    setActiveTab('chatbot');
   };
 
   const renderContent = () => {
@@ -170,14 +172,11 @@ export default function App() {
         return user.role === 'admin' ? <IPSManagement /> : <div className="p-8 text-soc-red">Unauthorized</div>;
       case 'chatbot':
         return (
-          <div className="h-[calc(100vh-160px)] glass-panel rounded-2xl overflow-hidden flex flex-col items-center justify-center p-12 text-center relative">
-             <div className="absolute inset-0 bg-gradient-to-b from-soc-purple/5 to-transparent pointer-events-none"></div>
-             <div className="w-20 h-20 bg-soc-purple/10 rounded-3xl flex items-center justify-center mb-6 neon-border-blue">
-                <RefreshCw className="w-10 h-10 text-soc-purple animate-spin-slow" />
-             </div>
-             <h2 className="text-2xl font-bold mb-2 neon-text-blue">AI Analyst Interface</h2>
-             <p className="text-soc-muted max-w-md">Use the floating assistant in the bottom right to interact with the CyberSOC AI analyst from any page.</p>
-          </div>
+          <Chatbot 
+            contextData={chatContextData} 
+            onClearContext={() => setChatContextData(null)} 
+            autoSend={true}
+          />
         );
       default:
         return <Dashboard onSelectLog={setSelectedIncident} onInvestigate={handleInvestigate} />;
@@ -259,11 +258,6 @@ export default function App() {
             window.dispatchEvent(new CustomEvent('soc_forensics_search', { detail: { type: 'source_ip', query: incident.source_ip } }));
           }, 100);
         }}
-      />
-      
-      <Chatbot 
-        contextData={chatContextData} 
-        onClearContext={() => setChatContextData(null)} 
       />
     </div>
   );
