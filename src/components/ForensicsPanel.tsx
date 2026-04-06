@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, Download, ShieldAlert, CheckCircle2, AlertCircle, Clock, Database, User, Globe } from 'lucide-react';
+import { Search, Download, ShieldAlert, AlertCircle, Clock, Database, User, Globe } from 'lucide-react';
 import { api } from '../api/client';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -50,7 +50,7 @@ export default function ForensicsPanel() {
   };
 
   const exportCSV = () => {
-    if (logs.length === 0) return;
+    if (!Array.isArray(logs) || logs.length === 0) return;
     const headers = ['Timestamp', 'Source IP', 'Event Type', 'Username', 'Status Code', 'Is Anomaly', 'Payload'];
     const csvContent = [
       headers.join(','),
@@ -73,7 +73,7 @@ export default function ForensicsPanel() {
   };
 
   const exportJSON = () => {
-    if (logs.length === 0) return;
+    if (!Array.isArray(logs) || logs.length === 0) return;
     const jsonContent = JSON.stringify(logs, null, 2);
     const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
     const link = document.createElement('a');
@@ -82,7 +82,7 @@ export default function ForensicsPanel() {
     link.click();
   };
 
-  const anomalyCount = useMemo(() => logs.filter(l => l.is_anomaly).length, [logs]);
+  const anomalyCount = useMemo(() => Array.isArray(logs) ? logs.filter(l => l.is_anomaly).length : 0, [logs]);
 
   return (
     <div className="space-y-6">
@@ -178,7 +178,7 @@ export default function ForensicsPanel() {
                 Event Timeline
               </h3>
               
-              {logs.length > 0 ? (
+              {Array.isArray(logs) && logs.length > 0 ? (
                 <div className="relative border-l-2 border-soc-border/50 ml-4 space-y-8 pb-4">
                   {logs.map((log, index) => (
                     <motion.div 

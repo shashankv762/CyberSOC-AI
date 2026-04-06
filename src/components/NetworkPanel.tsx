@@ -10,7 +10,7 @@ export default function NetworkPanel() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const filteredAndSortedNetwork = useMemo(() => {
-    if (!network) return [];
+    if (!network || !Array.isArray(network)) return [];
     
     // Filter
     let result = network.filter((conn: any) => {

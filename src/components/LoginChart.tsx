@@ -7,7 +7,7 @@ export default function LoginChart() {
   const { data: stats } = usePolling(() => api.getStats(), 30000);
 
   const chartData = Array.from({ length: 24 }, (_, i) => {
-    const hourData = stats?.timeline?.find(t => t.hour === i);
+    const hourData = Array.isArray(stats?.timeline) ? stats.timeline.find((t: any) => t.hour === i) : null;
     return {
       name: `${i.toString().padStart(2, '0')}:00`,
       total: hourData?.count || 0,

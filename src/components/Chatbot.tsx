@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageSquare, Send, Bot, User, X, Minimize2, Maximize2, Sparkles } from 'lucide-react';
+import { MessageSquare, Send, Bot, User, X, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { api } from '../api/client';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 
 interface ChatbotProps {
-  contextAlertId: number | null;
+  contextData: any;
   onClearContext: () => void;
 }
 
-export default function Chatbot({ contextAlertId, onClearContext }: ChatbotProps) {
+export default function Chatbot({ contextData, onClearContext }: ChatbotProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
@@ -32,7 +32,7 @@ export default function Chatbot({ contextAlertId, onClearContext }: ChatbotProps
   const loadHistory = async () => {
     try {
       const res = await api.getChatHistory();
-      setChatHistory(res.data);
+      setChatHistory(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error("Failed to load chat history:", err.response?.status, err.response?.data);
     }
@@ -54,14 +54,19 @@ export default function Chatbot({ contextAlertId, onClearContext }: ChatbotProps
       await api.saveChatHistory('user', userContent);
 
       // 2. Get context if needed
-      let contextData = null;
-      if (contextAlertId) {
-        const contextRes = await api.getChatContext(contextAlertId);
-        contextData = contextRes.data;
+      let contextDataToUse = contextData;
+      if (contextData && contextData.id && !contextData.source_ip) {
+        // If it's an alert without log details, try to fetch full context
+        try {
+          const contextRes = await api.getChatContext(contextData.id);
+          contextDataToUse = contextRes.data;
+        } catch (e) {
+          console.error("Failed to fetch full context", e);
+        }
       }
 
       // 3. Call Gemini
-      const systemPrompt = `You are CyberSOC, an expert AI security analyst assistant embedded in a Security Operations Center platform. You analyze log anomalies, explain attack patterns, and suggest mitigation strategies. Be concise, precise, and use security terminology correctly. Format responses in clear sections when explaining incidents. Never hallucinate IP addresses or usernames — only reference data provided to you. You can search historical chat data using the searchChatHistory tool to find relevant past conversations or analyses.`;
+      const systemPrompt = `You are CyberSOC, an expert AI security analyst assistant embedded in a Security Operations Center platform. You analyze log anomalies, explain attack patterns, and suggest mitigation strategies. Be concise, precise, and use security terminology correctly. Format responses in clear sections when explaining incidents. Never hallucinate IP addresses or usernames — only reference data provided to you. You can search historical chat data using the searchChatHistory tool to find relevant past conversations or analyses. You can also fetch recent alerts and alert details using the provided tools.`;
 
       const searchChatHistoryFunctionDeclaration: FunctionDeclaration = {
         name: "searchChatHistory",
@@ -78,52 +83,123 @@ export default function Chatbot({ contextAlertId, onClearContext }: ChatbotProps
         },
       };
 
+      const getRecentAlertsFunctionDeclaration: FunctionDeclaration = {
+        name: "getRecentAlerts",
+        description: "Get a list of recent security alerts.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            limit: {
+              type: Type.NUMBER,
+              description: "The number of alerts to retrieve (default 10).",
+            },
+          },
+        },
+      };
+
+      const getRecentLogsFunctionDeclaration: FunctionDeclaration = {
+        name: "getRecentLogs",
+        description: "Get a list of recent system logs.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            limit: {
+              type: Type.NUMBER,
+              description: "The number of logs to retrieve (default 10).",
+            },
+          },
+        },
+      };
+
+      const getAlertDetailsFunctionDeclaration: FunctionDeclaration = {
+        name: "getAlertDetails",
+        description: "Get detailed information and context for a specific alert ID.",
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            alertId: {
+              type: Type.NUMBER,
+              description: "The ID of the alert to retrieve details for.",
+            },
+          },
+          required: ["alertId"],
+        },
+      };
+
       let prompt = userContent;
-      if (contextData) {
-        prompt = `ALERT CONTEXT:\n${JSON.stringify(contextData, null, 2)}\n---\nUSER MESSAGE: ${prompt}`;
+      if (contextDataToUse) {
+        prompt = `ALERT CONTEXT:\n${JSON.stringify(contextDataToUse, null, 2)}\n---\nUSER MESSAGE: ${prompt}`;
       }
 
-      let response = await ai.models.generateContent({
+      const history = chatHistory.map((msg: any) => ({
+        role: msg.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: msg.content }]
+      }));
+
+      const chat = ai.chats.create({
         model: "gemini-3-flash-preview",
-        contents: prompt,
+        history: history,
         config: {
           systemInstruction: systemPrompt,
-          tools: [{ functionDeclarations: [searchChatHistoryFunctionDeclaration] }],
-        },
+          tools: [{ functionDeclarations: [searchChatHistoryFunctionDeclaration, getRecentAlertsFunctionDeclaration, getRecentLogsFunctionDeclaration, getAlertDetailsFunctionDeclaration] }],
+        }
       });
 
-      const functionCalls = response.functionCalls;
-      if (functionCalls && functionCalls.length > 0) {
-        const call = functionCalls[0];
-        if (call.name === "searchChatHistory") {
-          const query = call.args.query;
-          const searchRes = await api.searchChatHistory(query);
-          const searchResults = searchRes.data;
-          
-          const previousContent = response.candidates?.[0]?.content;
-          response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: [
-              previousContent,
-              {
-                role: "user",
-                parts: [{
-                  functionResponse: {
-                    name: "searchChatHistory",
-                    response: { results: searchResults }
-                  }
-                }]
-              }
-            ],
-            config: {
-              systemInstruction: systemPrompt,
-              tools: [{ functionDeclarations: [searchChatHistoryFunctionDeclaration] }],
-            },
+      let response = await chat.sendMessage({ message: prompt });
+
+      let callCount = 0;
+      while (response.functionCalls && response.functionCalls.length > 0 && callCount < 3) {
+        const functionResponses = [];
+
+        for (const call of response.functionCalls) {
+          let functionResponseData: any = { error: "Function not found" };
+
+          try {
+            if (call.name === "searchChatHistory") {
+              const query = call.args.query as string;
+              const searchRes = await api.searchChatHistory(query);
+              functionResponseData = searchRes.data;
+            } else if (call.name === "getRecentAlerts") {
+              const limit = (call.args.limit as number) || 10;
+              const alertsRes = await api.getAlerts({ limit });
+              functionResponseData = alertsRes.data;
+            } else if (call.name === "getRecentLogs") {
+              const limit = (call.args.limit as number) || 10;
+              const logsRes = await api.getLogs({ limit });
+              functionResponseData = logsRes.data;
+            } else if (call.name === "getAlertDetails") {
+              const alertId = call.args.alertId as number;
+              const contextRes = await api.getChatContext(alertId);
+              functionResponseData = contextRes.data;
+            }
+          } catch (e: any) {
+            console.error(`Error executing function ${call.name}:`, e);
+            functionResponseData = { error: e.message || "Failed to execute function" };
+          }
+
+          functionResponses.push({
+            functionResponse: {
+              name: call.name,
+              response: { result: functionResponseData }
+            }
           });
         }
+
+        response = await chat.sendMessage({
+          message: functionResponses
+        } as any);
+        
+        callCount++;
       }
 
-      const aiContent = response.text;
+      let aiContent = response.text;
+      if (!aiContent) {
+        if (response.functionCalls && response.functionCalls.length > 0) {
+          aiContent = "I have gathered the necessary data but need more specific instructions to analyze it further. What would you like to know?";
+        } else {
+          aiContent = "I have analyzed the data. Let me know if you need specific details.";
+        }
+      }
 
       // 4. Save AI message to history
       await api.saveChatHistory('assistant', aiContent);
@@ -131,7 +207,7 @@ export default function Chatbot({ contextAlertId, onClearContext }: ChatbotProps
       const aiMsg = { role: 'assistant', content: aiContent, created_at: new Date().toISOString() };
       setChatHistory(prev => [...prev, aiMsg]);
       
-      if (contextAlertId) onClearContext();
+      if (contextData) onClearContext();
     } catch (err) {
       console.error("Chat error:", err);
       setChatHistory(prev => [...prev, { 
@@ -238,9 +314,9 @@ export default function Chatbot({ contextAlertId, onClearContext }: ChatbotProps
 
             {/* Input */}
             <form onSubmit={handleSend} className="p-4 border-t border-soc-border bg-soc-surface">
-              {contextAlertId && (
+              {contextData && (
                 <div className="mb-3 p-2 bg-soc-blue/10 border border-soc-blue/20 rounded-lg flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-soc-blue uppercase">Context: Alert #{contextAlertId}</span>
+                  <span className="text-[10px] font-bold text-soc-blue uppercase">Context: {contextData.id ? `Alert #${contextData.id}` : 'Log Event'}</span>
                   <button type="button" onClick={onClearContext} className="text-soc-blue hover:text-soc-red">
                     <X className="w-3 h-3" />
                   </button>
@@ -277,7 +353,7 @@ export default function Chatbot({ contextAlertId, onClearContext }: ChatbotProps
         className="w-14 h-14 bg-soc-purple text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-105 transition-transform relative"
       >
         <MessageSquare className="w-6 h-6" />
-        {contextAlertId && (
+        {contextData && (
           <div className="absolute -top-1 -right-1 w-4 h-4 bg-soc-red rounded-full border-2 border-soc-bg animate-pulse" />
         )}
       </button>

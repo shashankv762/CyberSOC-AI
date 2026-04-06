@@ -21,7 +21,7 @@ export const realSystemMonitor = {
             const pid = parseInt(parts[0], 10);
             const cpu = parseFloat(parts[1]);
             const mem = parseFloat(parts[2]);
-            const stateChar = parts[3];
+            const stateChar = parts[3].charAt(0);
             const name = parts.slice(4).join(' ');
             
             let status = 'Unknown';
@@ -60,7 +60,7 @@ export const realSystemMonitor = {
     setInterval(async () => {
       try {
         // Use ss to get real network connections
-        const { stdout } = await execAsync('ss -tunap | grep ESTAB | head -n 50');
+        const { stdout } = await execAsync('ss -tunap | grep ESTAB | head -n 50 || true');
         const lines = stdout.split('\n').filter(line => line.trim() !== '');
         
         for (const line of lines) {

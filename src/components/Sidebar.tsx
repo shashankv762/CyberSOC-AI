@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Bell, List, MessageSquare, ShieldCheck, Activity, Globe, Cpu, SearchCode, Users } from 'lucide-react';
+import { LayoutDashboard, Bell, List, MessageSquare, ShieldCheck, Globe, Cpu, SearchCode, Users } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface SidebarProps {

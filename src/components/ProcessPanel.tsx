@@ -10,7 +10,7 @@ export default function ProcessPanel() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const filteredAndSortedProcesses = useMemo(() => {
-    if (!processes) return [];
+    if (!processes || !Array.isArray(processes)) return [];
     
     // Filter
     let result = processes.filter((proc: any) => {

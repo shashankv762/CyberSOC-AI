@@ -21,7 +21,7 @@ export default function Dashboard({ onSelectLog, onInvestigate }: DashboardProps
     { label: 'Total Logs Today', value: stats?.total_logs || 0, icon: Activity, color: 'text-soc-blue', border: 'border-soc-blue/30' },
     { label: 'Active Processes', value: stats?.process_count || 0, icon: Target, color: 'text-soc-purple', border: 'border-soc-purple/30' },
     { label: 'Network Conns', value: stats?.network_count || 0, icon: Activity, color: 'text-soc-blue', border: 'border-soc-blue/30' },
-    { label: 'Critical Alerts', value: alerts?.filter(a => a.severity === 'Critical').length || 0, icon: ShieldAlert, color: 'text-soc-red', border: 'border-soc-red/30' },
+    { label: 'Critical Alerts', value: (Array.isArray(alerts) ? alerts : [])?.filter(a => a.severity === 'Critical').length || 0, icon: ShieldAlert, color: 'text-soc-red', border: 'border-soc-red/30' },
   ];
 
   const pieData = stats?.events_per_type ? Object.entries(stats.events_per_type).map(([name, value]) => ({

@@ -17,7 +17,7 @@ export default function LogFeed({ onSelectLog }: LogFeedProps) {
   const [showFilters, setShowFilters] = useState(false);
 
   const filteredLogs = useMemo(() => {
-    if (!logs) return [];
+    if (!logs || !Array.isArray(logs)) return [];
     return logs.filter((log: any) => {
       if (filterEventType && log.event_type !== filterEventType) return false;
       if (filterSourceIp && !log.source_ip.includes(filterSourceIp)) return false;
@@ -28,7 +28,7 @@ export default function LogFeed({ onSelectLog }: LogFeedProps) {
   }, [logs, filterEventType, filterSourceIp, filterAnomaly]);
 
   const uniqueEventTypes = useMemo(() => {
-    if (!logs) return [];
+    if (!logs || !Array.isArray(logs)) return [];
     return Array.from(new Set(logs.map((l: any) => l.event_type))) as string[];
   }, [logs]);
 

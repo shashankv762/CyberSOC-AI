@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, UserPlus, Edit2, Trash2, Shield, X, Save } from 'lucide-react';
+import { Users, Edit2, Trash2, Shield, X, Save } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatDistanceToNow } from 'date-fns';
 import { auth, db } from '../firebase';
@@ -64,6 +64,7 @@ export default function UserManagement() {
   const [asyncError, setAsyncError] = useState<Error | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [userToDelete, setUserToDelete] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     role: 'analyst'
@@ -131,19 +132,21 @@ export default function UserManagement() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this user profile? (This does not delete their Firebase Auth account)')) return;
+  const confirmDelete = async () => {
+    if (!userToDelete) return;
     try {
-      await deleteDoc(doc(db, 'users', id));
+      await deleteDoc(doc(db, 'users', userToDelete));
       toast.success('User profile deleted');
     } catch (err: any) {
       setError(err.message || 'Failed to delete user');
       toast.error('Failed to delete user');
       try {
-        handleFirestoreError(err, OperationType.DELETE, `users/${id}`);
+        handleFirestoreError(err, OperationType.DELETE, `users/${userToDelete}`);
       } catch (e: any) {
         setAsyncError(e);
       }
+    } finally {
+      setUserToDelete(null);
     }
   };
 
@@ -218,7 +221,7 @@ export default function UserManagement() {
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => handleDelete(user.id)}
+                      onClick={() => setUserToDelete(user.id)}
                       className="p-1.5 text-soc-muted hover:text-soc-red hover:bg-soc-red/10 rounded-lg transition-colors"
                       title="Delete User Profile"
                     >
@@ -231,6 +234,48 @@ export default function UserManagement() {
           </tbody>
         </table>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {userToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-soc-surface border border-soc-border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl"
+            >
+              <div className="p-4 border-b border-soc-border flex justify-between items-center bg-soc-bg/50">
+                <h3 className="font-bold flex items-center gap-2 text-soc-text">
+                  <Trash2 className="w-5 h-5 text-soc-red" />
+                  Confirm Deletion
+                </h3>
+                <button onClick={() => setUserToDelete(null)} className="p-1 hover:bg-soc-border rounded-md transition-colors text-soc-muted">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-6">
+                <p className="text-soc-text mb-4">Are you sure you want to delete this user profile?</p>
+                <p className="text-xs text-soc-muted mb-6">Note: This only deletes their profile data in Firestore, not their Firebase Auth account.</p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setUserToDelete(null)}
+                    className="px-4 py-2 text-sm font-bold text-soc-text hover:bg-soc-border rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmDelete}
+                    className="px-4 py-2 text-sm font-bold bg-soc-red text-white hover:bg-soc-red/90 rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    Delete Profile
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {isModalOpen && (

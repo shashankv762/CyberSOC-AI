@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { usePolling } from '../hooks/usePolling';
 import { api } from '../api/client';
 import { formatDistanceToNow } from 'date-fns';
-import { ShieldAlert, Check, Search, Settings, X, Save } from 'lucide-react';
+import { Check, Search, Settings, X, Save } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-hot-toast';
 
@@ -147,7 +147,7 @@ export default function AlertsPanel({ onInvestigate }: AlertsPanelProps) {
         )}
       </AnimatePresence>
 
-      {!alerts || alerts.length === 0 ? (
+      {!alerts || !Array.isArray(alerts) || alerts.length === 0 ? (
         <div className="bg-soc-surface border border-soc-border rounded-xl p-8 text-center">
           <div className="w-12 h-12 bg-soc-green/10 rounded-full flex items-center justify-center mx-auto mb-4">
             <Check className="w-6 h-6 text-soc-green" />
@@ -180,6 +180,39 @@ export default function AlertsPanel({ onInvestigate }: AlertsPanelProps) {
               <p className="text-sm font-medium text-soc-text mb-3 line-clamp-2">
                 {alert.reason}
               </p>
+
+              <div className="flex flex-wrap gap-2 mb-3">
+                {alert.source_ip && (
+                  <span className="text-[10px] font-mono bg-soc-bg px-2 py-1 rounded border border-soc-border text-soc-blue">
+                    IP: {alert.source_ip}
+                  </span>
+                )}
+                {alert.event_type && (
+                  <span className="text-[10px] font-mono bg-soc-bg px-2 py-1 rounded border border-soc-border text-soc-text">
+                    Event: {alert.event_type}
+                  </span>
+                )}
+                {alert.status_code && (
+                  <span className="text-[10px] font-mono bg-soc-bg px-2 py-1 rounded border border-soc-border text-soc-text">
+                    Status: {alert.status_code}
+                  </span>
+                )}
+                {(() => {
+                  let port = 'N/A';
+                  try {
+                    const payload = typeof alert.payload === 'string' ? JSON.parse(alert.payload) : alert.payload;
+                    if (payload && payload.port) port = payload.port;
+                  } catch (e) {}
+                  if (port !== 'N/A') {
+                    return (
+                      <span className="text-[10px] font-mono bg-soc-bg px-2 py-1 rounded border border-soc-border text-soc-text">
+                        Port: {port}
+                      </span>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
 
               <div className="flex gap-2">
                 <button

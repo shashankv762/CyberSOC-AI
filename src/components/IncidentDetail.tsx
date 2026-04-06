@@ -14,8 +14,28 @@ export default function IncidentDetail({ incident, onClose, onAskAI, onForensics
 
   if (!incident) return null;
 
-  const mitigations = incident.mitigations ? JSON.parse(incident.mitigations) : [];
-  const payload = incident.payload ? JSON.parse(incident.payload) : {};
+  let mitigations: string[] = [];
+  try {
+    if (incident.mitigations) {
+      const parsed = typeof incident.mitigations === 'string' 
+        ? JSON.parse(incident.mitigations) 
+        : incident.mitigations;
+      mitigations = Array.isArray(parsed) ? parsed : [];
+    }
+  } catch (e) {
+    console.error("Failed to parse mitigations:", e);
+  }
+
+  let payload: any = {};
+  try {
+    if (incident.payload) {
+      payload = typeof incident.payload === 'string' 
+        ? JSON.parse(incident.payload) 
+        : incident.payload;
+    }
+  } catch (e) {
+    console.error("Failed to parse payload:", e);
+  }
 
   return (
     <AnimatePresence>
@@ -68,7 +88,7 @@ export default function IncidentDetail({ incident, onClose, onAskAI, onForensics
                   { label: 'Event Type', value: incident.event_type, capitalize: true },
                   { label: 'Status Code', value: incident.status_code },
                   { label: 'Geo Region', value: incident.geo_country || 'Unknown' },
-                  { label: 'Port', value: incident.port || 'N/A' },
+                  { label: 'Port', value: incident.port || payload?.port || 'N/A' },
                 ].map((item, i) => (
                   <div key={i} className="bg-soc-bg p-3 rounded-xl border border-soc-border">
                     <div className="text-[10px] text-soc-muted uppercase font-bold mb-1">{item.label}</div>

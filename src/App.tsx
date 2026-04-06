@@ -11,7 +11,7 @@ import NetworkPanel from './components/NetworkPanel';
 import ForensicsPanel from './components/ForensicsPanel';
 import UserManagement from './components/UserManagement';
 import IPSManagement from './components/IPSManagement';
-import { RefreshCw, Clock } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { api } from './api/client';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster, toast } from 'react-hot-toast';
@@ -27,7 +27,7 @@ export default function App() {
   });
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedIncident, setSelectedIncident] = useState(null);
-  const [chatContextAlertId, setChatContextAlertId] = useState(null);
+  const [chatContextData, setChatContextData] = useState(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [alertCount, setAlertCount] = useState(0);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -126,8 +126,8 @@ export default function App() {
     setSelectedIncident(incident);
   };
 
-  const handleAskAI = (incident) => {
-    setChatContextAlertId(incident.id);
+  const handleAskAI = (incident: any) => {
+    setChatContextData(incident);
   };
 
   const renderContent = () => {
@@ -262,8 +262,8 @@ export default function App() {
       />
       
       <Chatbot 
-        contextAlertId={chatContextAlertId} 
-        onClearContext={() => setChatContextAlertId(null)} 
+        contextData={chatContextData} 
+        onClearContext={() => setChatContextData(null)} 
       />
     </div>
   );
