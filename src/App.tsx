@@ -122,7 +122,7 @@ export default function App() {
     );
   }
 
-  const handleInvestigate = (incident) => {
+  const handleInvestigate = (incident: any) => {
     setSelectedIncident(incident);
   };
 
@@ -250,7 +250,7 @@ export default function App() {
         incident={selectedIncident} 
         onClose={() => setSelectedIncident(null)} 
         onAskAI={handleAskAI}
-        onForensics={(incident) => {
+        onForensics={(incident: any) => {
           setSelectedIncident(null);
           setActiveTab('forensics');
           // We can dispatch a custom event to trigger forensics search

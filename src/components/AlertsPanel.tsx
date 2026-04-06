@@ -26,7 +26,7 @@ export default function AlertsPanel({ onInvestigate }: AlertsPanelProps) {
     }
   }, [showSettings]);
 
-  const handleAcknowledge = async (e, id) => {
+  const handleAcknowledge = async (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
     try {
       await api.acknowledgeAlert(id, true);

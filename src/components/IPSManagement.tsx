@@ -6,9 +6,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-hot-toast';
 
 export default function IPSManagement() {
-  const [blockedIps, setBlockedIps] = useState([]);
+  const [blockedIps, setBlockedIps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
   // Manual block state
@@ -56,7 +56,7 @@ export default function IPSManagement() {
     }
   };
 
-  const handleManualBlock = async (e) => {
+  const handleManualBlock = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newIp) return;
     

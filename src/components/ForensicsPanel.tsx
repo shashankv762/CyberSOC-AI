@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 export default function ForensicsPanel() {
   const [query, setQuery] = useState('');
   const [searchType, setSearchType] = useState('source_ip'); // 'source_ip' or 'username'
-  const [logs, setLogs] = useState([]);
+  const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
 

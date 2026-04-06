@@ -13,7 +13,7 @@ interface ChatbotProps {
 
 export default function Chatbot({ contextData, onClearContext, autoSend }: ChatbotProps) {
   const [message, setMessage] = useState('');
-  const [chatHistory, setChatHistory] = useState([]);
+  const [chatHistory, setChatHistory] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef(null);
   const hasAutoSent = useRef(false);
