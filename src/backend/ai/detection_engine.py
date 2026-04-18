@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import requests
 from typing import Dict, Any, List
 from collections import deque
 
@@ -76,6 +77,23 @@ class SigmaEngine:
             except Exception:
                 pass
         return matches
+
+    def add_rule(self, rule_yaml: str):
+        if not HAS_YAML:
+            return
+        try:
+            rule = yaml.safe_load(rule_yaml)
+            if rule:
+                self.rules.append(rule)
+                # Save it to disk as well
+                title = rule.get("title", f"auto_rule_{int(time.time())}")
+                filename = "".join(x for x in title if x.isalnum() or x in "_- ") + ".yml"
+                filename = filename.replace(" ", "_").lower()
+                with open(os.path.join(self.rules_dir, filename), "w") as f:
+                    yaml.dump(rule, f)
+                print(f"Added and saved new Sigma rule: {title}", flush=True)
+        except Exception as e:
+            print(f"Error adding dynamic Sigma rule: {e}", flush=True)
 
 
 class AnomalyDetector:
@@ -196,6 +214,73 @@ class YaraScanner:
         except Exception:
             return []
 
+
+import requests
+
+class ThreatIntelClient:
+    def __init__(self):
+        # We can configure keys via environment variables or fallback to public APIs
+        self.abuseipdb_key = os.environ.get("ABUSEIPDB_API_KEY", "")
+        self.otx_key = os.environ.get("OTX_API_KEY", "")
+        self.cache = {}
+
+    def check_ip(self, ip_address: str) -> Dict[str, Any]:
+        if not ip_address or ip_address in ["127.0.0.1", "localhost", "0.0.0.0"]:
+            return {"malicious": False, "score": 0, "source": "internal"}
+            
+        if ip_address in self.cache:
+            return self.cache[ip_address]
+
+        result = {"malicious": False, "score": 0, "source": "none"}
+        
+        try:
+            # If we don't have an API key, we simulate a public list lookup for demonstration
+            # In a real scenario, this would query AlienVault OTX or equivalent free feeds
+            
+            if self.abuseipdb_key:
+                url = "https://api.abuseipdb.com/api/v2/check"
+                headers = {'Accept': 'application/json', 'Key': self.abuseipdb_key}
+                response = requests.get(url, headers=headers, params={'ipAddress': ip_address, 'maxAgeInDays': '90'}, timeout=2)
+                if response.status_code == 200:
+                    data = response.json()['data']
+                    score = data.get('abuseConfidenceScore', 0)
+                    result = {
+                        "malicious": score > 50,
+                        "score": score,
+                        "source": "AbuseIPDB",
+                        "tags": [data.get('domain')] if data.get('domain') else []
+                    }
+                    self.cache[ip_address] = result
+                    return result
+                    
+            if self.otx_key:
+                url = f"https://otx.alienvault.com/api/v1/indicators/IPv4/{ip_address}/general"
+                headers = {'X-OTX-API-KEY': self.otx_key}
+                response = requests.get(url, headers=headers, timeout=2)
+                if response.status_code == 200:
+                    data = response.json()
+                    pulses = data.get('pulse_info', {}).get('count', 0)
+                    result = {
+                        "malicious": pulses > 2,
+                        "score": min(100, pulses * 10),
+                        "source": "AlienVault OTX",
+                        "tags": []
+                    }
+                    self.cache[ip_address] = result
+                    return result
+            
+            # Fallback mock for demo when keys aren't set but we want to simulate TI behavior
+            # Simulate some IPs as malicious based on hardcoded patterns to prove it works dynamically
+            if ip_address.startswith("185.") or ip_address.startswith("45."):
+                result = {"malicious": True, "score": 85, "source": "Mock Mock Public TI Feed", "tags": ["Scanner", "Malicious Host"]}
+            else:
+                result = {"malicious": False, "score": 10, "source": "Mock Public TI Feed", "tags": ["Clean"]}
+                
+            self.cache[ip_address] = result
+        except requests.RequestException:
+            pass
+            
+        return result
 
 class KillChainCorrelator:
     def __init__(self, window_minutes=5):

@@ -144,23 +144,30 @@ class LayerHardener:
 
     def trigger_retraining(self, event: Dict[str, Any]) -> Dict[str, Any]:
         self.sigma_rules_generated += 1
-        rule_name = f"Auto_Generated_Rule_{self.sigma_rules_generated}"
-        sigma_template = f"""title: {rule_name}
+        rule_name = f"Auto_Generated_Rule_{self.sigma_rules_generated}_{int(time.time())}"
+        
+        # Build logic based on the payload or event type natively observed in the miss.
+        payload = str(event.get('payload', '')).replace("'", "''").replace('"', '\\"')
+        
+        sigma_template = f"""title: {rule_name.replace('_', ' ')}
 status: experimental
-description: Auto-generated rule after Layer 1 missed attacks.
+description: Auto-generated rule autonomously created by Sentinel Brain after Layer 1 (IPS) missed multiple related attacks.
+author: Sentinel AI
+date: {time.strftime("%Y/%m/%d")}
 logsource:
-    product: linux
+    category: application
 detection:
     selection:
-        EventID: {event.get('event_type', 'unknown')}
-        SourceIp: {event.get('source_ip', 'unknown')}
+        event_type: '{event.get('event_type', 'unknown')}'
+        source_ip: '{event.get('source_ip', 'unknown')}'
     condition: selection
-level: high"""
+level: critical"""
+
         # Reset misses after generating a rule
         self.layer1_misses = []
         return {
             "action": "retrain_layer1",
             "status": "success",
-            "message": "Layer 1 miss-rate exceeded threshold. Retraining triggered.",
+            "message": f"Layer 1 miss-rate exceeded threshold. Autonomous Sigma rule '{rule_name}' generated.",
             "new_sigma_rule": sigma_template
         }

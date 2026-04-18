@@ -94,7 +94,7 @@ export default function SentinelBrain() {
             <div className="space-y-4">
               <div className="flex justify-between items-center p-3 rounded-lg bg-black/40 border border-white/5">
                 <span className="text-sm text-soc-muted">LLM Engine</span>
-                <span className="text-xs font-mono text-soc-cyan bg-soc-cyan/10 px-2 py-1 rounded">Phi-3-Mini (Local)</span>
+                <span className="text-xs font-mono text-soc-cyan bg-soc-cyan/10 px-2 py-1 rounded">Gemini 2.5 Flash</span>
               </div>
               <div className="flex justify-between items-center p-3 rounded-lg bg-black/40 border border-white/5">
                 <span className="text-sm text-soc-muted">Memory Architecture</span>

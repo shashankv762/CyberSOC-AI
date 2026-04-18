@@ -51,6 +51,53 @@ except Exception as e:
     HAS_RL = False
     print(json.dumps({"status": "warning", "message": f"RL modules failed to load: {e}"}), flush=True)
 
+try:
+    from google import genai
+    from google.genai import types
+    HAS_GEMINI = True
+except ImportError:
+    HAS_GEMINI = False
+except Exception as e:
+    HAS_GEMINI = False
+    print(json.dumps({"status": "warning", "message": f"Gemini module failed to load: {e}"}), flush=True)
+
+class GeminiLLM:
+    def __init__(self):
+        self.enabled = HAS_GEMINI
+        self.client = None
+        self.model_name = 'gemini-2.5-flash'
+        if self.enabled:
+            api_key = os.environ.get("GEMINI_API_KEY", "")
+            if api_key:
+                try:
+                    self.client = genai.Client(api_key=api_key)
+                    print(json.dumps({"status": "ready", "message": f"Gemini API ({self.model_name}) initialized for automated SOC."}), flush=True)
+                except Exception as e:
+                    print(json.dumps({"error": f"Failed to setup Gemini API: {e}"}), flush=True)
+                    self.enabled = False
+            else:
+                self.enabled = False
+
+    def invoke(self, prompt: str, system_instruction: str = None) -> str:
+        if not self.enabled or not self.client:
+            raise Exception("Gemini LLM not initialized.")
+            
+        try:
+            config = types.GenerateContentConfig(
+                temperature=0.7
+            )
+            if system_instruction:
+                config.system_instruction = system_instruction
+                
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=config
+            )
+            return response.text.strip()
+        except Exception as e:
+            raise Exception(f"Gemini generation failed: {e}")
+
 class LocalTransformersLLM:
     def __init__(self, model_name="HuggingFaceTB/SmolLM-135M-Instruct"):
         self.model_name = model_name
@@ -160,7 +207,7 @@ class RLDecisionAgent:
         self.enabled = HAS_RL
         self.model_path = model_path
         self.model = None
-        self.actions = ["IGNORE", "BLOCK_IP", "KILL_PROCESS", "ISOLATE_ENDPOINT"]
+        self.actions = ["IGNORE", "BLOCK_IP", "KILL_PROCESS", "ISOLATE_ENDPOINT", "DEPLOY_HONEYPOT", "DEPLOY_HONEY_CREDENTIALS"]
         self.replay_buffer = []
         self.batch_size = 3
         
@@ -173,7 +220,7 @@ class RLDecisionAgent:
                 def __init__(self, buffer=None):
                     super().__init__()
                     self.observation_space = gym.spaces.Box(low=0, high=1, shape=(5,), dtype=np.float32)
-                    self.action_space = gym.spaces.Discrete(4)
+                    self.action_space = gym.spaces.Discrete(6)
                     self.buffer = buffer or []
                     self.current_step = 0
                 def step(self, action):
@@ -238,17 +285,22 @@ class RLDecisionAgent:
         
         # Calculate dynamic reward based on threat pattern
         reward = 0.0
+        payload = str(event.get("payload", "")).lower()
         if severity == "Critical":
             if action_taken == "ISOLATE_ENDPOINT": reward = 10.0
             elif action_taken == "BLOCK_IP": reward = 5.0
             elif action_taken == "IGNORE": reward = -10.0
+            elif action_taken == "DEPLOY_HONEY_CREDENTIALS" and ("dump" in payload or "lsass" in payload): reward = 10.0
+            elif action_taken == "DEPLOY_HONEYPOT" and "scan" in payload: reward = 8.0
         elif severity == "High" or severity == "Medium":
             if action_taken == "BLOCK_IP": reward = 5.0
             elif action_taken == "IGNORE": reward = -5.0
+            elif action_taken == "DEPLOY_HONEYPOT": reward = 6.0
             elif action_taken == "ISOLATE_ENDPOINT": reward = -2.0 # Overreacting
         else:
             if action_taken == "IGNORE": reward = 5.0
             elif action_taken in ["BLOCK_IP", "ISOLATE_ENDPOINT"]: reward = -5.0 # False positive penalty
+            elif action_taken == "DEPLOY_HONEYPOT": reward = 2.0 # Low risk scanning trap
 
         # Convert action_taken string to idx
         try:
@@ -273,7 +325,7 @@ class RLDecisionAgent:
                 self.replay_buffer = [] # Flush it to prevent recursive crash
 
 from response_engine import ResponseEngine, LayerHardener
-from detection_engine import SigmaEngine, AnomalyDetector, MITREMapper, YaraScanner, KillChainCorrelator
+from detection_engine import SigmaEngine, AnomalyDetector, MITREMapper, YaraScanner, KillChainCorrelator, ThreatIntelClient
 
 class AttackMemory:
     def __init__(self, persist_directory="./chroma_db"):
@@ -360,9 +412,10 @@ class AttackerProfiler:
                 "description": "Heuristic analysis suggests a methodical attacker targeting specific internal services."
             }
         
-        prompt = f"Analyze these attack events and build a psychological profile of the attacker. Events: {events}. Return ONLY a JSON object with 'type', 'traits' (list), and 'description'."
+        prompt = f"Analyze these attack events and build a psychological profile of the attacker. Events: {events}. Return ONLY a valid JSON object with EXACTLY these string keys: 'type', 'traits' (list of strings), and 'description'. Do not use markdown wraps."
         try:
             res = self.llm.invoke(prompt)
+            res = res.replace("```json", "").replace("```", "").strip()
             return json.loads(res)
         except:
             return {
@@ -382,9 +435,10 @@ class CampaignNamer:
                 "backstory": "A stealthy operation targeting shadow IT services discovered during routine scans."
             }
         
-        prompt = f"Based on these attack patterns, generate a cool operation name (e.g. 'Operation X') and a short backstory. Events: {events}. Return ONLY a JSON object with 'name' and 'backstory'."
+        prompt = f"Based on these attack patterns, generate a cool cyber operation name (e.g. 'Operation X') and a short backstory. Events: {events}. Return ONLY a valid JSON object with string keys 'name' and 'backstory'. Do not use markdown wrap."
         try:
             res = self.llm.invoke(prompt)
+            res = res.replace("```json", "").replace("```", "").strip()
             return json.loads(res)
         except:
             return {
@@ -446,8 +500,10 @@ class SentinelAgent:
         self.rl_agent = RLDecisionAgent()
         self.malware_analyzer = MalwareAnalyzer()
         
-        # Prefer LocalTransformersLLM if available, fallback to Ollama
-        if HAS_TRANSFORMERS:
+        # Prefer GeminiLLM if available, fallback to others
+        if HAS_GEMINI and os.environ.get("GEMINI_API_KEY"):
+            self.llm = GeminiLLM()
+        elif HAS_TRANSFORMERS:
             self.llm = LocalTransformersLLM()
         elif HAS_OLLAMA:
             self.llm = Ollama(model="phi3")
@@ -466,6 +522,7 @@ class SentinelAgent:
         self.mitre = MITREMapper()
         self.yara = YaraScanner()
         self.correlator = KillChainCorrelator()
+        self.threat_intel = ThreatIntelClient()
         
         if HAS_LANGGRAPH:
             self.graph = self._build_graph()
@@ -493,6 +550,18 @@ class SentinelAgent:
     def analyze(self, state: SentinelState):
         event = state.get("event", {})
         
+        # Threat Intel Lookup
+        source_ip = event.get('source_ip', '')
+        ti_result = self.threat_intel.check_ip(source_ip) if source_ip else {"malicious": False}
+        state["ti_result"] = ti_result
+        
+        # Enhance existing event dynamically based on TI
+        if ti_result.get("malicious"):
+            event["severity"] = "Critical"
+            event["is_anomaly"] = True
+            if "tags" in ti_result and ti_result["tags"]:
+                event["payload"] = str(event.get("payload", "")) + f" [TI Tags: {', '.join(ti_result['tags'])}]"
+        
         # Detection Engine Layer
         sigma_matches = self.sigma.match(event)
         anomaly_result = self.anomaly.process(event)
@@ -513,6 +582,8 @@ class SentinelAgent:
         campaign = self.namer.name_campaign(similar_for_profiling + [event])
             
         analysis_text = f"Analyzed event {event.get('event_type', 'unknown')} from {event.get('source_ip', 'unknown')}. "
+        if ti_result and ti_result.get("malicious"):
+            analysis_text += f"Threat Intel Hit: Known malicious IP ({ti_result.get('source')}). "
         if sigma_matches:
             analysis_text += f"Sigma Matches: {', '.join(sigma_matches)}. "
         if anomaly_result.get("is_anomaly"):
@@ -538,6 +609,13 @@ class SentinelAgent:
             hardening_result = self.hardener.record_miss(event)
             if hardening_result:
                 state["hardening_action"] = hardening_result
+                new_sigma_rule = hardening_result.get("new_sigma_rule")
+                if new_sigma_rule:
+                    try:
+                        self.sigma.add_rule(new_sigma_rule)
+                        print(json.dumps({"status": "ready", "message": "Sigma rule autonomously generated and applied to detection layer."}), flush=True)
+                    except Exception as e:
+                        print(json.dumps({"error": f"Failed to apply new Sigma rule: {e}"}), flush=True)
                 
         # Deep Learning: Predict threat level based on learned patterns
         dl_threat_score = self.deep_learner.predict_threat(event)
@@ -567,6 +645,8 @@ class SentinelAgent:
 
     def decide_action(self, state: SentinelState):
         event = state.get("event", {})
+        dl_threat_score = state.get("dl_threat_score", 0.0)
+        malware_analysis = state.get("malware_analysis", {})
         
         if state.get("auto_respond"):
             state["action"] = "AUTO_REMEDIATE"
@@ -575,20 +655,47 @@ class SentinelAgent:
             # RL Agent Decision
             rl_decision = self.rl_agent.decide_action(event)
             
-            if rl_decision != "LLM_DECISION" and rl_decision != "IGNORE":
+            if rl_decision != "LLM_DECISION":
+                # For LLM_DECISION fallback, we evaluate it specifically
                 state["action"] = rl_decision
                 state["reasoning"] = f"Reinforcement Learning Agent selected optimal policy: {rl_decision}"
-            elif self.llm:
-                try:
-                    prompt = f"You are SENTINEL, an autonomous cybersecurity agent. Decide action for: {event}"
-                    state["action"] = "LLM_DECISION"
-                    state["reasoning"] = self.llm.invoke(prompt)
-                except Exception as e:
+            
+            if state.get("action") == "LLM_DECISION" or rl_decision == "LLM_DECISION":
+                if self.llm:
+                    try:
+                        system_instruction = "You are SENTINEL, a highly advanced, fully autonomous SOC AI. Your goal is to critically analyze security events and decide the best protective response action. The available actions you can choose from are ONLY: [IGNORE, BLOCK_IP, ISOLATE_ENDPOINT, DEPLOY_HONEYPOT, DEPLOY_HONEY_CREDENTIALS]. You MUST analyze the payload, threat score, anomaly classification, and attacker profile. If behavior looks like a scanner or lateral movement, prefer a honeypot. If it looks like privilege escalation or credential dumping, prefer honey credentials. Reply with ONLY a JSON object containing 'action' and 'reasoning'."
+                        
+                        prompt = json.dumps({
+                            "event_data": event,
+                            "dl_threat_score": dl_threat_score, 
+                            "malware_analysis": malware_analysis
+                        })
+                        
+                        if isinstance(self.llm, GeminiLLM):
+                            response_text = self.llm.invoke(prompt, system_instruction=system_instruction)
+                        else:
+                            response_text = self.llm.invoke(system_instruction + "\n\nPayload:\n" + prompt)
+                        
+                        response_text = response_text.replace("```json", "").replace("```", "").strip()
+                        
+                        try:
+                            llm_decision = json.loads(response_text)
+                            state["action"] = llm_decision.get("action", "IGNORE")
+                            state["reasoning"] = llm_decision.get("reasoning", "LLM determined this action autonomously.")
+                        except json.JSONDecodeError:
+                            if "BLOCK_IP" in response_text: state["action"] = "BLOCK_IP"
+                            elif "ISOLATE_ENDPOINT" in response_text: state["action"] = "ISOLATE_ENDPOINT"
+                            elif "DEPLOY_HONEY_CREDENTIALS" in response_text: state["action"] = "DEPLOY_HONEY_CREDENTIALS"
+                            elif "DEPLOY_HONEYPOT" in response_text: state["action"] = "DEPLOY_HONEYPOT"
+                            else: state["action"] = "IGNORE"
+                            state["reasoning"] = "Extracted action from raw LLM output."
+                    except Exception as e:
+                        state["action"] = "MANUAL_REVIEW"
+                        state["reasoning"] = f"LLM Error: {e}"
+                else:
                     state["action"] = "MANUAL_REVIEW"
-                    state["reasoning"] = f"LLM Error: {e}"
-            else:
-                state["action"] = "MANUAL_REVIEW"
-                state["reasoning"] = "No similar past attacks found. Local LLM and RL unavailable. Escalating to human analyst."
+                    state["reasoning"] = "No similar past attacks found. LLM unavailable. Escalating to human analyst."
+                    
         return state
 
     def execute(self, state: SentinelState):
@@ -597,6 +704,18 @@ class SentinelAgent:
         
         execution_details = []
         
+        # Explicit Deception Operations parsing based on specific actions requested
+        if action == "DEPLOY_HONEYPOT" or action == "DEPLOY_HONEY_CREDENTIALS":
+            if "CREDENTIALS" in action:
+                res = self.response_engine.deception.deploy_trap("fake_credentials", "lsass_memory")
+                execution_details.append(res)
+            else:
+                res = self.response_engine.deploy_honeypot(port=8080, service_type="http")
+                execution_details.append(res)
+            state["execution_result"] = f"Executed Deception Engine: {action}"
+            state["execution_details"] = execution_details
+            return state
+
         if action == "AUTO_REMEDIATE" or action == "LLM_DECISION":
             # Extract actions from playbook or reasoning
             text_to_parse = state.get("playbook", "") + " " + state.get("reasoning", "")

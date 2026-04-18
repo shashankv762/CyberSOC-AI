@@ -17,7 +17,12 @@ class SentinelBridge extends EventEmitter {
     const scriptPath = path.join(__dirname, '../ai/sentinel_brain.py');
     
     const spawnPython = (command: string) => {
-      this.pythonProcess = spawn(command, [scriptPath]);
+      this.pythonProcess = spawn(command, [scriptPath], {
+        env: {
+            ...process.env,
+            GEMINI_API_KEY: process.env.GEMINI_API_KEY || ''
+        }
+      });
 
       this.pythonProcess.on('error', (err: any) => {
         if (err.code === 'ENOENT') {
@@ -58,12 +63,46 @@ class SentinelBridge extends EventEmitter {
               // Process Autonomous Actions from the Brain
               const action = msg.data.action;
               const executions = msg.data.execution_details || [];
+              const eventSeverity = msg.data.event?.severity;
+              const tiResult = msg.data.ti_result;
+              
+              if (eventSeverity === 'Critical') {
+                  import('./alert_service.js').then(({ alertService }) => {
+                     // Fire automatic high severity alert since Sentinel Python identified it
+                     const reason = tiResult?.malicious 
+                        ? `[Threat Intel Hit] ${tiResult.source} flags IP as highly malicious. ${msg.data.reasoning || ''}`
+                        : `[Sentinel Brain Critical] AI evaluated multi-layered threat path over threshold. ${msg.data.reasoning || ''}`;
+                        
+                     alertService.createAlert({
+                        log_id: msg.data.event?.id || Math.floor(Math.random() * 1000000),
+                        severity: "Critical",
+                        reason: reason,
+                        score: msg.data.dl_threat_score || 0.95,
+                        mitigations: `Action taken by AI: ${action}`
+                     });
+                  }).catch(e => console.error("Failed to dynamically import alertService:", e));
+              }
+
               if (action && action !== "MANUAL_REVIEW" && action !== "IGNORE" && action !== "LLM_DECISION") {
                 const sourceIp = msg.data.event?.source_ip;
+                const reasoning = msg.data.reasoning || "Autonomous Sentinel RL Response";
+                
+                // Handle Deceptions
+                if (action.includes("HONEYPOT") || action.includes("CREDENTIALS")) {
+                    import('./alert_service.js').then(({ alertService }) => {
+                       alertService.createAlert({
+                          log_id: msg.data.event?.id || Math.floor(Math.random() * 1000000),
+                          severity: "High",
+                          reason: `[Deception Deployed] ${action}`,
+                          score: 0.85,
+                          mitigations: `Sentinel Brain automatically deployed deception layer tripwires based on heuristics. Engine Reasoning: ${reasoning}`
+                       });
+                       console.log(`[SENTINEL AUTO-RESPONSE] ${action} dynamically deployed.`);
+                    });
+                }
+                
                 if (sourceIp) {
                   import('./ips_service.js').then(({ ipsService }) => {
-                    const reasoning = msg.data.reasoning || "Autonomous Sentinel RL Response";
-                    
                     if (action === "BLOCK_IP") {
                       ipsService.blockIp(sourceIp, `[RL Brain] ${reasoning}`, 1); // 1 hr block
                       console.log(`[SENTINEL AUTO-RESPONSE] Blocked IP: ${sourceIp}`);
@@ -106,7 +145,7 @@ class SentinelBridge extends EventEmitter {
     try {
       console.log("Checking Sentinel Python dependencies...");
       import('child_process').then(({ exec }) => {
-         const installCmd = 'python3 -m pip install --no-cache-dir scikit-learn PyYAML transformers stable-baselines3 gymnasium torch --extra-index-url https://download.pytorch.org/whl/cpu --break-system-packages || (wget -qO- https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages && python3 -m pip install --no-cache-dir scikit-learn PyYAML transformers stable-baselines3 gymnasium torch --extra-index-url https://download.pytorch.org/whl/cpu --break-system-packages)';
+         const installCmd = 'python3 -m pip install --no-cache-dir scikit-learn PyYAML transformers stable-baselines3 gymnasium torch google-genai --extra-index-url https://download.pytorch.org/whl/cpu --break-system-packages || (wget -qO- https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages && python3 -m pip install --no-cache-dir scikit-learn PyYAML transformers stable-baselines3 gymnasium torch google-genai --extra-index-url https://download.pytorch.org/whl/cpu --break-system-packages)';
          exec(installCmd, (error, stdout, stderr) => {
            if (error) {
              console.warn(`[SENTINEL DEPS] Installation warning: ${error.message}`);

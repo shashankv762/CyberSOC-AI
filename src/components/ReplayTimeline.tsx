@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Clock, Bug } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Clock, Bug, Globe } from 'lucide-react';
 
 interface ReplayProps {
   events: any[];
@@ -69,11 +69,18 @@ export default function ReplayTimeline({ events, onReplay }: ReplayProps) {
                  <div className="text-[10px] text-soc-muted font-mono mb-1">
                    {new Date((event.event?.timestamp) || event.timestamp).toLocaleTimeString()}
                  </div>
-                 {event.malware_analysis?.is_malware && (
-                   <span className="text-[10px] bg-soc-red/20 text-soc-red border border-soc-red/30 px-1.5 py-0.5 rounded flex items-center gap-1 font-bold">
-                     <Bug className="w-3 h-3" />
-                   </span>
-                 )}
+                 <div className="flex gap-1">
+                   {event.ti_result?.malicious && (
+                     <span className="text-[10px] bg-soc-cyan/20 text-soc-cyan border border-soc-cyan/30 px-1.5 py-0.5 rounded flex items-center gap-1 font-bold" title="Threat Intel Hit">
+                       <Globe className="w-3 h-3" />
+                     </span>
+                   )}
+                   {event.malware_analysis?.is_malware && (
+                     <span className="text-[10px] bg-soc-red/20 text-soc-red border border-soc-red/30 px-1.5 py-0.5 rounded flex items-center gap-1 font-bold" title="Malware Payload">
+                       <Bug className="w-3 h-3" />
+                     </span>
+                   )}
+                 </div>
               </div>
               <div className="text-xs font-bold text-soc-text truncate">{event.event?.event_type || event.event_type || 'Unknown'}</div>
               <div className="text-[10px] text-soc-muted truncate">{event.event?.source_ip || event.source_ip || '---'}</div>

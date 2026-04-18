@@ -224,6 +224,12 @@ export default function ForensicsPanel() {
                                    'T1082 - Discovery'}
                                 </span>
                             )}
+                            {/* Threat Intel Hit Approximation based on tags embedded by analyzer */}
+                            {log.payload && (log.payload.includes('TI Tags:') || log.payload.includes('Threat Intel Hit')) && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-soc-cyan/20 text-soc-cyan border border-soc-cyan/30 flex items-center gap-1">
+                                  <Globe className="w-3 h-3" /> TI MATCH
+                                </span>
+                            )}
                           </div>
                           {log.is_anomaly && (
                             <span className="flex items-center gap-1 text-[10px] font-bold text-soc-red uppercase">
