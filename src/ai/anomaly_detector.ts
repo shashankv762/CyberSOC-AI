@@ -2,7 +2,7 @@
 // we implement a weighted scoring model that mimics the behavior of an anomaly detector.
 
 export class AnomalyDetector {
-  predict(features: number[]): [boolean, number] {
+  predict(features: number[], threshold: number = 0.35): [boolean, number] {
     const [
       hour,
       isWeekend,
@@ -30,7 +30,7 @@ export class AnomalyDetector {
 
     // Normalize score to 0-1
     const normalizedScore = Math.min(score, 1.0);
-    const isAnomaly = normalizedScore > 0.35;
+    const isAnomaly = normalizedScore > threshold;
 
     return [isAnomaly, normalizedScore];
   }

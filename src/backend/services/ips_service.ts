@@ -6,7 +6,10 @@ const blockedIpsCache = new Set<string>();
 export const ipsService = {
   init: () => {
     try {
-      const rows = db.prepare("SELECT ip FROM blocked_ips").all() as { ip: string }[];
+      // First, clean up expired IPs
+      ipsService.cleanupExpiredBlocks();
+      
+      const rows = db.prepare("SELECT ip FROM blocked_ips WHERE expires_at IS NULL OR expires_at > datetime('now')").all() as { ip: string }[];
       rows.forEach(row => blockedIpsCache.add(row.ip));
       console.log(`[IPS] Loaded ${blockedIpsCache.size} blocked IPs from database.`);
     } catch (err) {
@@ -14,15 +17,24 @@ export const ipsService = {
     }
   },
 
-  blockIp: (ip: string, reason: string) => {
+  blockIp: (ip: string, reason: string, durationHours?: number | null) => {
     try {
-      const stmt = db.prepare(`
-        INSERT OR REPLACE INTO blocked_ips (ip, reason)
-        VALUES (?, ?)
-      `);
-      stmt.run(ip, reason);
+      if (durationHours) {
+        const stmt = db.prepare(`
+          INSERT OR REPLACE INTO blocked_ips (ip, reason, expires_at)
+          VALUES (?, ?, datetime('now', ?))
+        `);
+        stmt.run(ip, reason, `+${Math.floor(durationHours * 60)} minutes`);
+      } else {
+        const stmt = db.prepare(`
+          INSERT OR REPLACE INTO blocked_ips (ip, reason, expires_at)
+          VALUES (?, ?, NULL)
+        `);
+        stmt.run(ip, reason);
+      }
+      
       blockedIpsCache.add(ip);
-      console.log(`[IPS] Blocked IP: ${ip} - Reason: ${reason}`);
+      console.log(`[IPS] Blocked IP: ${ip} - Reason: ${reason}${durationHours ? ` - Duration: ${durationHours}h` : ' - Permanent'}`);
       return true;
     } catch (err) {
       console.error(`[IPS] Failed to block IP ${ip}:`, err);
@@ -53,6 +65,23 @@ export const ipsService = {
     } catch (err) {
       console.error("[IPS] Failed to get blocked IPs:", err);
       return [];
+    }
+  },
+  
+  cleanupExpiredBlocks: () => {
+    try {
+      const expiredIps = db.prepare("SELECT ip FROM blocked_ips WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')").all() as { ip: string }[];
+      if (expiredIps.length > 0) {
+        const stmt = db.prepare("DELETE FROM blocked_ips WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')");
+        stmt.run();
+        
+        expiredIps.forEach(row => {
+          blockedIpsCache.delete(row.ip);
+          console.log(`[IPS] Auto-unblocked expired IP: ${row.ip}`);
+        });
+      }
+    } catch (err) {
+      console.error("[IPS] Failed to cleanup expired IPs:", err);
     }
   }
 };

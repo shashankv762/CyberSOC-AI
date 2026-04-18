@@ -100,36 +100,41 @@ export default function App() {
         const res = await api.getAlerts({ acknowledged: false });
         if (Array.isArray(res.data)) {
           setAlertCount(res.data.length);
-          
-          // Check for new critical alerts
-          res.data.forEach(alert => {
-            if (!seenAlertIds.current.has(alert.id)) {
-              seenAlertIds.current.add(alert.id);
-              if (alert.severity === 'Critical') {
-                toast.error(`CRITICAL ALERT: ${alert.reason}`, {
-                  duration: 6000,
-                  position: 'top-right',
-                  style: {
-                    background: '#000000',
-                    color: '#ef4444',
-                    border: '1px solid rgba(239, 68, 68, 0.5)',
-                  },
-                  iconTheme: {
-                    primary: '#ef4444',
-                    secondary: '#000000',
-                  },
-                });
-              }
-            }
-          });
         }
       } catch (err) {
         console.error("Failed to fetch alerts:", err);
       }
     };
     fetchAlerts();
-    const interval = setInterval(fetchAlerts, 10000);
-    return () => clearInterval(interval);
+
+    // SSE Setup for Real-Time Push Notifications
+    const evtSource = new EventSource('/api/stream');
+    evtSource.addEventListener('new_alert', (e) => {
+      try {
+        const alert = JSON.parse(e.data);
+        setAlertCount(prev => prev + 1);
+        if (alert.severity === 'Critical') {
+          toast.error(`CRITICAL THREAT DETECTED: ${alert.reason}`, {
+            duration: 8000,
+            position: 'top-right',
+            style: {
+              background: '#000000',
+              color: '#ef4444',
+              border: '2px solid rgba(239, 68, 68, 0.8)',
+              boxShadow: '0 0 20px rgba(239, 68, 68, 0.4)'
+            },
+            iconTheme: {
+              primary: '#ef4444',
+              secondary: '#000000',
+            },
+          });
+        }
+      } catch (err) {
+        console.error("Error parsing SSE alert message", err);
+      }
+    });
+
+    return () => evtSource.close();
   }, [user, isAuthReady]);
 
   useEffect(() => {

@@ -16,7 +16,9 @@ export default function AlertsPanel({ onInvestigate }: AlertsPanelProps) {
   const [settings, setSettings] = useState({
     auto_ack_enabled: false,
     auto_ack_severity: 'Low',
-    auto_ack_delay_minutes: 60
+    auto_ack_delay_minutes: 60,
+    anomaly_threshold: 0.35,
+    critical_threshold: 0.85
   });
   const [saving, setSaving] = useState(false);
 
@@ -124,9 +126,36 @@ export default function AlertsPanel({ onInvestigate }: AlertsPanelProps) {
                       className="bg-soc-bg border border-soc-border rounded-xl px-3 py-2 text-sm text-soc-text outline-none focus:border-soc-cyan/50 font-mono"
                     />
                   </div>
-                  <p className="text-xs text-soc-muted">
+                  <p className="text-xs text-soc-muted pb-4 border-b border-soc-border">
                     Alerts with severity <strong>{settings.auto_ack_severity}</strong> will be automatically acknowledged after <strong>{settings.auto_ack_delay_minutes}</strong> minutes.
                   </p>
+                </div>
+                
+                <h4 className="font-bold text-soc-text font-syne pt-2">AI Anomaly Detection</h4>
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] uppercase font-bold text-soc-muted tracking-widest ml-1">Anomaly Threshold ({settings.anomaly_threshold})</label>
+                    <input 
+                      type="range" 
+                      min="0.1" max="0.9" step="0.05"
+                      value={settings.anomaly_threshold}
+                      onChange={e => setSettings({...settings, anomaly_threshold: parseFloat(e.target.value)})}
+                      className="accent-soc-cyan"
+                    />
+                    <p className="text-[10px] text-soc-muted">Scores above this generate an alert.</p>
+                  </div>
+                  
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] uppercase font-bold text-soc-muted tracking-widest ml-1">Critical Threshold ({settings.critical_threshold})</label>
+                    <input 
+                      type="range" 
+                      min="0.5" max="0.99" step="0.05"
+                      value={settings.critical_threshold}
+                      onChange={e => setSettings({...settings, critical_threshold: parseFloat(e.target.value)})}
+                      className="accent-soc-red"
+                    />
+                    <p className="text-[10px] text-soc-muted">Scores above this trigger automated IPS blocks.</p>
+                  </div>
                 </div>
               </div>
               <div className="p-4 border-t border-soc-border bg-soc-bg/50 flex justify-end gap-2">

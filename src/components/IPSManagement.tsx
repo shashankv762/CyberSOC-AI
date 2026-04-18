@@ -15,6 +15,7 @@ export default function IPSManagement() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newIp, setNewIp] = useState('');
   const [newReason, setNewReason] = useState('');
+  const [blockDuration, setBlockDuration] = useState<string>('permanent'); // permanent, 1, 24
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Unblock confirmation state
@@ -62,10 +63,12 @@ export default function IPSManagement() {
     
     setIsSubmitting(true);
     try {
-      await api.blockIp(newIp, newReason || "Manually blocked by administrator");
+      const durationHours = blockDuration === 'permanent' ? null : parseFloat(blockDuration);
+      await api.blockIp(newIp, newReason || "Manually blocked by administrator", durationHours);
       setIsModalOpen(false);
       setNewIp('');
       setNewReason('');
+      setBlockDuration('permanent');
       fetchBlockedIps();
       toast.success(`IP ${newIp} blocked successfully`);
     } catch (err) {
@@ -132,19 +135,20 @@ export default function IPSManagement() {
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">IP Address</th>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Reason</th>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Blocked At</th>
+                <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs">Expires In</th>
                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-xs text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-soc-border">
               {loading && blockedIps.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-soc-muted">
+                  <td colSpan={5} className="px-6 py-8 text-center text-soc-muted">
                     Loading IPS data...
                   </td>
                 </tr>
               ) : filteredIps.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center">
+                  <td colSpan={5} className="px-6 py-12 text-center">
                     <ShieldCheck className="w-12 h-12 text-soc-green/50 mx-auto mb-3" />
                     <p className="text-soc-muted">No blocked IPs found</p>
                   </td>
@@ -160,6 +164,9 @@ export default function IPSManagement() {
                     </td>
                     <td className="px-6 py-4 text-soc-muted whitespace-nowrap">
                       {formatDistanceToNow(new Date(block.timestamp))} ago
+                    </td>
+                    <td className="px-6 py-4 text-soc-muted whitespace-nowrap">
+                      {block.expires_at ? `${formatDistanceToNow(new Date(block.expires_at))}` : 'Permanent'}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button
@@ -263,6 +270,19 @@ export default function IPSManagement() {
                     rows={3}
                     className="w-full bg-soc-bg border border-soc-border rounded-xl px-3 py-2 text-sm text-soc-text outline-none focus:border-soc-red/50 resize-none"
                   />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase font-bold text-soc-muted tracking-widest ml-1">Block Duration</label>
+                  <select
+                    value={blockDuration}
+                    onChange={(e) => setBlockDuration(e.target.value)}
+                    className="w-full bg-soc-bg border border-soc-border rounded-xl px-3 py-2 text-sm text-soc-text outline-none focus:border-soc-red/50"
+                  >
+                    <option value="1">1 Hour</option>
+                    <option value="24">24 Hours</option>
+                    <option value="permanent">Permanent</option>
+                  </select>
                 </div>
 
                 <div className="pt-4 flex justify-end gap-2">

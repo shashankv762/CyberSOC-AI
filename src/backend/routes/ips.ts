@@ -23,7 +23,7 @@ router.get("/blocked", (req, res) => {
 // Manually block an IP
 router.post("/block", (req, res) => {
   try {
-    const { ip, reason } = req.body;
+    const { ip, reason, duration } = req.body;
     const user = (req as any).user;
     
     if (!ip) {
@@ -31,7 +31,8 @@ router.post("/block", (req, res) => {
     }
 
     const blockReason = reason || "Manually blocked by administrator";
-    const success = ipsService.blockIp(ip, blockReason);
+    const durationHours = duration ? parseFloat(duration) : null;
+    const success = ipsService.blockIp(ip, blockReason, durationHours);
     
     if (success) {
       // Log the action
@@ -41,7 +42,7 @@ router.post("/block", (req, res) => {
         username: user?.username || "admin",
         event_type: "ips_action",
         status_code: 200,
-        payload: { action: "block", reason: blockReason }
+        payload: { action: "block", reason: blockReason, duration: durationHours }
       }).catch(console.error);
 
       res.json({ message: `IP ${ip} successfully blocked` });

@@ -1,5 +1,5 @@
 import { db } from "../database.js";
-import { alertService } from "./alert_service.js";
+import { alertService, settingsService } from "./alert_service.js";
 import { ipsService } from "./ips_service.js";
 import { featureExtractor } from "../../ai/feature_extractor.js";
 import { anomalyDetector } from "../../ai/anomaly_detector.js";
@@ -10,8 +10,13 @@ export const logService = {
     // 1. Extract features
     const features = featureExtractor.extract(logData);
     
+    // Fetch thresholds
+    const settings = settingsService.getSettings();
+    const anomalyThreshold = settings.anomaly_threshold ?? 0.35;
+    const criticalThreshold = settings.critical_threshold ?? 0.85;
+
     // 2. Predict anomaly
-    const [isAnomaly, score] = anomalyDetector.predict(features);
+    const [isAnomaly, score] = anomalyDetector.predict(features, anomalyThreshold);
     
     // 3. Save log
     const logId = logService.createLog({
@@ -27,8 +32,8 @@ export const logService = {
       
       // Assign severity
       let severity = "Low";
-      if (score > 0.85) severity = "Critical";
-      else if (score > 0.4) severity = "Medium";
+      if (score > criticalThreshold) severity = "Critical"; // Changed to use dynamic threshold
+      else if (score > (anomalyThreshold + (criticalThreshold - anomalyThreshold) * 0.2)) severity = "Medium";
       
       // 5. Create alert
       alertId = alertService.createAlert({
@@ -39,17 +44,18 @@ export const logService = {
         mitigations
       });
 
-      // 6. IPS Action: Automatically block IP if score is critically high (> 0.85)
-      if (score > 0.85 && logData.source_ip) {
+      // 6. IPS Action: Automatically block IP if score is critically high
+      if (score > criticalThreshold && logData.source_ip) {
         const blockReason = `Automated IPS Block: Critical anomaly score (${score.toFixed(2)}) detected. Reason: ${reason}`;
-        const blocked = ipsService.blockIp(logData.source_ip, blockReason);
+        // Apply a relatively long block for critical automated blocks by default (e.g., 24 hours)
+        const blocked = ipsService.blockIp(logData.source_ip, blockReason, 24);
         
         if (blocked) {
           // Generate a specific alert for the IPS action
           alertService.createAlert({
             log_id: logId,
             severity: "Critical",
-            reason: `[IPS ACTION TAKEN] IP ${logData.source_ip} has been automatically blocked.`,
+            reason: `[IPS ACTION TAKEN] IP ${logData.source_ip} has been automatically blocked for 24 hours.`,
             score: 1.0,
             mitigations: `Administrator review required. To unblock, navigate to the IPS settings. Original trigger: ${reason}`
           });

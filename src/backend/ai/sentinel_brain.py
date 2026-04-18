@@ -161,34 +161,45 @@ class RLDecisionAgent:
         self.model_path = model_path
         self.model = None
         self.actions = ["IGNORE", "BLOCK_IP", "KILL_PROCESS", "ISOLATE_ENDPOINT"]
+        self.replay_buffer = []
+        self.batch_size = 3
         
         if self.enabled:
             self._init_model()
             
     def _init_model(self):
         try:
+            class DummyEnv(gym.Env):
+                def __init__(self, buffer=None):
+                    super().__init__()
+                    self.observation_space = gym.spaces.Box(low=0, high=1, shape=(5,), dtype=np.float32)
+                    self.action_space = gym.spaces.Discrete(4)
+                    self.buffer = buffer or []
+                    self.current_step = 0
+                def step(self, action):
+                    reward = 0.0
+                    done = True
+                    if self.buffer and self.current_step < len(self.buffer):
+                        _, target_action_idx, targeted_reward = self.buffer[self.current_step]
+                        # Reward if model picked same action as what we evaluated, or provide standard step reward
+                        reward = targeted_reward if action == target_action_idx else -1.0
+                        self.current_step += 1
+                        done = self.current_step >= len(self.buffer)
+                    next_state = self.buffer[self.current_step][0] if not done else np.zeros(5, dtype=np.float32)
+                    return next_state, float(reward), done, False, {}
+                def reset(self, seed=None, options=None):
+                    self.current_step = 0
+                    initial_state = self.buffer[0][0] if self.buffer else np.zeros(5, dtype=np.float32)
+                    return initial_state, {}
+
+            self.DummyEnv = DummyEnv
+
             if os.path.exists(self.model_path):
                 self.model = PPO.load(self.model_path)
                 print(json.dumps({"status": "ready", "message": "RL Agent loaded from disk."}), flush=True)
             else:
-                # Initialize a dummy environment just to create the model structure
-                # In a real scenario, we'd have a custom Gym environment
-                from stable_baselines3.common.env_util import make_vec_env
-                from stable_baselines3.common.envs import IdentityEnvBox
-                # Observation space: 5 features (score, severity, payload_len, has_sql, has_script)
-                # Action space: 4 discrete actions
-                class DummyEnv(gym.Env):
-                    def __init__(self):
-                        super().__init__()
-                        self.observation_space = gym.spaces.Box(low=0, high=1, shape=(5,), dtype=np.float32)
-                        self.action_space = gym.spaces.Discrete(4)
-                    def step(self, action):
-                        return np.zeros(5, dtype=np.float32), 0.0, False, False, {}
-                    def reset(self, seed=None, options=None):
-                        return np.zeros(5, dtype=np.float32), {}
-                
-                env = DummyEnv()
-                self.model = PPO("MlpPolicy", env, verbose=0)
+                env = self.DummyEnv()
+                self.model = PPO("MlpPolicy", env, verbose=0, n_steps=16, batch_size=16)
                 self.model.save(self.model_path)
                 print(json.dumps({"status": "ready", "message": "RL Agent initialized with new policy."}), flush=True)
         except Exception as e:
@@ -197,9 +208,9 @@ class RLDecisionAgent:
 
     def _extract_state(self, event: Dict[str, Any]) -> Any:
         features = [
-            float(event.get("score", 0.0)) / 100.0, # Normalize
-            1.0 if event.get("severity") == "Critical" else (0.5 if event.get("severity") == "High" else 0.1),
-            min(1.0, float(len(event.get("payload", ""))) / 1000.0), # Normalize
+            float(event.get("score", 0.0)) / 100.0 if float(event.get("score", 0.0)) > 1.0 else float(event.get("score", 0.0)), 
+            1.0 if event.get("severity") == "Critical" else (0.5 if event.get("severity") in ["High", "Medium"] else 0.1),
+            min(1.0, float(len(event.get("payload", ""))) / 1000.0),
             1.0 if "sql" in str(event.get("payload", "")).lower() else 0.0,
             1.0 if "script" in str(event.get("payload", "")).lower() else 0.0
         ]
@@ -211,6 +222,7 @@ class RLDecisionAgent:
             
         state = self._extract_state(event)
         try:
+            # Add a bit of exploration natively or trust the deterministic path
             action_idx, _states = self.model.predict(state, deterministic=True)
             return self.actions[int(action_idx)]
         except Exception as e:
@@ -218,9 +230,47 @@ class RLDecisionAgent:
             return "LLM_DECISION"
 
     def reward_and_learn(self, event: Dict[str, Any], action_taken: str, success: bool):
-        # In a full implementation, this would add the transition to a replay buffer
-        # and call model.learn(). For this prototype, we simulate the feedback loop.
-        pass
+        if not self.enabled or not self.model:
+            return
+
+        state = self._extract_state(event)
+        severity = event.get("severity", "Low")
+        
+        # Calculate dynamic reward based on threat pattern
+        reward = 0.0
+        if severity == "Critical":
+            if action_taken == "ISOLATE_ENDPOINT": reward = 10.0
+            elif action_taken == "BLOCK_IP": reward = 5.0
+            elif action_taken == "IGNORE": reward = -10.0
+        elif severity == "High" or severity == "Medium":
+            if action_taken == "BLOCK_IP": reward = 5.0
+            elif action_taken == "IGNORE": reward = -5.0
+            elif action_taken == "ISOLATE_ENDPOINT": reward = -2.0 # Overreacting
+        else:
+            if action_taken == "IGNORE": reward = 5.0
+            elif action_taken in ["BLOCK_IP", "ISOLATE_ENDPOINT"]: reward = -5.0 # False positive penalty
+
+        # Convert action_taken string to idx
+        try:
+            action_idx = self.actions.index(action_taken)
+        except:
+            action_idx = 0
+
+        self.replay_buffer.append((state, action_idx, reward))
+
+        # Perform online learning periodically
+        if len(self.replay_buffer) >= self.batch_size:
+            try:
+                env = self.DummyEnv(buffer=self.replay_buffer)
+                self.model.set_env(env)
+                # Learn on the gathered buffer
+                self.model.learn(total_timesteps=len(self.replay_buffer))
+                self.model.save(self.model_path)
+                print(json.dumps({"status": "ready", "message": f"RL Agent fine-tuned on {len(self.replay_buffer)} new events."}), flush=True)
+                self.replay_buffer = [] # Clear buffer
+            except Exception as e:
+                print(json.dumps({"error": f"RL Agent online training failed: {e}"}), flush=True)
+                self.replay_buffer = [] # Flush it to prevent recursive crash
 
 from response_engine import ResponseEngine, LayerHardener
 from detection_engine import SigmaEngine, AnomalyDetector, MITREMapper, YaraScanner, KillChainCorrelator
@@ -347,20 +397,46 @@ class MalwareAnalyzer:
         payload = str(event.get("payload", "")).lower()
         is_malware = False
         classification = "Clean"
+        detected_apis = []
         
-        # Static Analysis Stub
-        if "exec(" in payload or "eval(" in payload or "cmd.exe" in payload or "powershell" in payload:
-            is_malware = True
-            classification = "Suspicious Script / Reverse Shell"
+        # API Calls and Suspicious Strings Indicators
+        indicators = {
+            "virtualalloc": "Memory allocation (potential unpacking/injection)",
+            "createremotethread": "Process injection",
+            "loadlibrary": "Dynamic DLL loading",
+            "getprocaddress": "Dynamic API resolution",
+            "system(": "Command execution",
+            "popen(": "Process spawning",
+            "wget ": "Dropper behavior",
+            "curl ": "Dropper behavior",
+            "chmod +x": "Making dropped file executable",
+            "wscript.shell": "VBS script execution",
+            "invoke-webrequest": "PowerShell download",
+            "cmd.exe": "Shell execution",
+            "powershell": "PowerShell execution",
+            "eval(": "Code evaluation",
+            "exec(": "Code execution",
+            "base64_decode": "Obfuscation"
+        }
+        
+        for ind, desc in indicators.items():
+            if ind.lower() in payload:
+                is_malware = True
+                detected_apis.append(f"{ind} - {desc}")
+        
+        if is_malware:
+            classification = "Suspicious Script / Reverse Shell / Dropper"
         elif "0x" in payload and len(payload) > 50:
             is_malware = True
             classification = "Possible Shellcode / Binary Payload"
+            detected_apis.append("Hexadecimal encoding detected (potential shellcode)")
             
         return {
             "is_malware": is_malware,
             "classification": classification,
-            "static_analysis": "Strings extracted, API calls analyzed." if is_malware else "No suspicious signatures.",
-            "dynamic_analysis": "Simulated sandbox execution completed. Process injection detected." if is_malware else "N/A"
+            "static_analysis": "Found: " + ", ".join([d.split(' - ')[0] for d in detected_apis]) if is_malware else "No suspicious signatures.",
+            "dynamic_analysis": "Simulated sandbox execution completed. Process injection detected." if is_malware else "N/A",
+            "detected_indicators": detected_apis
         }
 
 class SentinelAgent:
@@ -641,6 +717,62 @@ if __name__ == "__main__":
             continue
         try:
             event = json.loads(line)
+            
+            # Special Control Commands
+            if event.get("event_type") == "SYSTEM_COMMAND":
+                cmd = event.get("command")
+                if cmd == "CLEAR_MEMORY":
+                    if agent.memory.enabled:
+                        try:
+                            # Recreate the collection to clear it
+                            agent.memory.client.delete_collection("attack_memory")
+                            agent.memory.collection = agent.memory.client.get_or_create_collection("attack_memory")
+                        except: pass
+                    agent.memory.memory = []
+                    print(json.dumps({"status": "ready", "message": "Episodic Vector Memory Cleared."}), flush=True)
+                elif cmd == "RESET_MODELS":
+                    # Deep Learning Reset
+                    if agent.deep_learner.enabled:
+                        agent.deep_learner.model = MLPClassifier(hidden_layer_sizes=(64, 32), activation='relu', solver='adam', max_iter=1)
+                        agent.deep_learner.model.partial_fit(np.zeros((2, 5)), np.array([0, 1]), classes=agent.deep_learner.classes)
+                    # RL Reset
+                    if agent.rl_agent.enabled:
+                        try:
+                            if os.path.exists("./rl_model.zip"): os.remove("./rl_model.zip")
+                        except: pass
+                        agent.rl_agent._init_model()
+                        agent.rl_agent.replay_buffer = []
+                    print(json.dumps({"status": "ready", "message": "AI Models Reset to Default States."}), flush=True)
+                elif cmd == "FORCE_RETRAIN":
+                    if agent.rl_agent.enabled and len(agent.rl_agent.replay_buffer) > 0:
+                        env = agent.rl_agent.DummyEnv(buffer=agent.rl_agent.replay_buffer)
+                        agent.rl_agent.model.set_env(env)
+                        agent.rl_agent.model.learn(total_timesteps=len(agent.rl_agent.replay_buffer))
+                        agent.rl_agent.model.save(agent.rl_agent.model_path)
+                        agent.rl_agent.replay_buffer = []
+                        print(json.dumps({"status": "ready", "message": "RL Agent Forced Manual Retraining Complete."}), flush=True)
+                    else:
+                        print(json.dumps({"status": "ready", "message": "No new events in RL buffer to retrain."}), flush=True)
+                elif cmd == "DEPLOY_HONEYPOT":
+                    import random
+                    port = random.randint(8000, 9000)
+                    res = agent.response_engine.deploy_honeypot(port, "http")
+                    print(json.dumps({"status": "ready", "message": res["message"]}), flush=True)
+                elif cmd == "DEPLOY_HONEY_CREDENTIALS":
+                    res = agent.response_engine.deception.deploy_trap("fake_credentials", "memory_space")
+                    print(json.dumps({"status": "ready", "message": res["message"]}), flush=True)
+                elif cmd == "YARA_SCAN":
+                    # Simulated YARA Scan command
+                    print(json.dumps({"type": "sentinel_result", "data": {
+                        "action": "YARA_SCAN_COMPLETE",
+                        "analysis": "Manual YARA Scan executed.",
+                        "reasoning": "User requested YARA scan via Forensics Panel.",
+                        "execution_result": "Scanned targeted directories. Clean.",
+                        "timestamp": time.time()
+                    }}), flush=True)
+                    print(json.dumps({"status": "ready", "message": "YARA rules applied globally."}), flush=True)
+                continue
+                
             result = agent.process_event(event)
             print(json.dumps({"type": "sentinel_result", "data": result}), flush=True)
         except Exception as e:

@@ -1,13 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 import { usePolling } from '../hooks/usePolling';
 import { api } from '../api/client';
-import { Brain, ShieldAlert, Cpu, Activity, CheckCircle2, AlertTriangle, Zap, FileText, X, Skull, Volume2, VolumeX } from 'lucide-react';
+import { Brain, ShieldAlert, Cpu, Activity, CheckCircle2, AlertTriangle, Zap, FileText, X, Skull, Volume2, VolumeX, Globe, Database, Server } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import DefenceInDepth from './DefenceInDepth';
 import AttackerProfile from './AttackerProfile';
 import CampaignNamer from './CampaignNamer';
 import ReplayTimeline from './ReplayTimeline';
+import MalwareAnalyzer from './MalwareAnalyzer';
 
 export default function SentinelBrain() {
   const { data: history } = usePolling(() => api.getSentinelHistory(), 2000);
@@ -75,6 +76,7 @@ export default function SentinelBrain() {
         <div className="space-y-6">
           {events[0]?.campaign && <CampaignNamer campaign={events[0].campaign} />}
           {events[0]?.attacker_profile && <AttackerProfile profile={events[0].attacker_profile} />}
+          {events[0]?.malware_analysis && <MalwareAnalyzer analysis={events[0].malware_analysis} />}
         </div>
       </div>
 
@@ -103,24 +105,96 @@ export default function SentinelBrain() {
                 <span className="text-xs font-mono text-soc-cyan bg-soc-cyan/10 px-2 py-1 rounded">Layered (1 → 4)</span>
               </div>
               <div className="flex justify-between items-center p-3 rounded-lg bg-black/40 border border-white/5">
-                <span className="text-sm text-soc-muted">Auto-Respond Threshold</span>
-                <span className="text-xs font-mono text-soc-yellow bg-soc-yellow/10 px-2 py-1 rounded">&gt; 0.85 Similarity</span>
-              </div>
-              <div className="flex justify-between items-center p-3 rounded-lg bg-black/40 border border-white/5">
-                <span className="text-sm text-soc-muted">Agent Framework</span>
-                <span className="text-xs font-mono text-soc-green bg-soc-green/10 px-2 py-1 rounded">Multi-Agent (LangGraph)</span>
-              </div>
-              <div className="flex justify-between items-center p-3 rounded-lg bg-black/40 border border-white/5">
                 <span className="text-sm text-soc-muted">Decision Engine</span>
                 <span className="text-xs font-mono text-soc-red bg-soc-red/10 px-2 py-1 rounded">RL (PPO) Active</span>
               </div>
               <div className="flex justify-between items-center p-3 rounded-lg bg-black/40 border border-white/5">
-                <span className="text-sm text-soc-muted">Local LLM</span>
-                <span className="text-xs font-mono text-soc-purple bg-soc-purple/10 px-2 py-1 rounded">SmolLM-135M</span>
-              </div>
-              <div className="flex justify-between items-center p-3 rounded-lg bg-black/40 border border-white/5">
                 <span className="text-sm text-soc-muted">Deep Learning</span>
                 <span className="text-xs font-mono text-soc-cyan bg-soc-cyan/10 px-2 py-1 rounded">Online MLP Active</span>
+              </div>
+            </div>
+
+            {/* AI Control Panel */}
+            <div className="mt-8 pt-6 border-t border-soc-border">
+              <h4 className="text-xs font-bold text-soc-muted tracking-widest uppercase mb-4 flex items-center gap-2">
+                <Brain className="w-4 h-4" />
+                Model Controls
+              </h4>
+              <div className="grid grid-cols-1 gap-3">
+                <button
+                  onClick={async () => {
+                    import('react-hot-toast').then(m => m.default.promise(
+                      api.sendSentinelCommand('FORCE_RETRAIN'),
+                      { loading: "Forcing RL model retrain...", success: "Retraining initiated", error: "Failed to retrain" }
+                    ));
+                  }}
+                  className="w-full flex items-center justify-between px-4 py-2 bg-soc-purple/10 hover:bg-soc-purple/20 text-soc-purple rounded-lg border border-soc-purple/20 transition-all font-mono text-xs"
+                >
+                  Force RL Agent Retrain
+                  <Zap className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={async () => {
+                    if (window.confirm("Are you sure you want to completely erase the Episodic Vector Memory? The AI will forget past campaigns.")) {
+                      import('react-hot-toast').then(m => m.default.promise(
+                        api.sendSentinelCommand('CLEAR_MEMORY'),
+                        { loading: "Clearing memory bank...", success: "Episodic memory cleared", error: "Failed to clear memory" }
+                      ));
+                    }
+                  }}
+                  className="w-full flex items-center justify-between px-4 py-2 bg-soc-yellow/10 hover:bg-soc-yellow/20 text-soc-yellow rounded-lg border border-soc-yellow/20 transition-all font-mono text-xs"
+                >
+                  Clear Episodic Memory
+                  <AlertTriangle className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={async () => {
+                    if (window.confirm("WARNING: This resets both the Deep Learning MLP and RL Agent to default baseline states. Proceed?")) {
+                      import('react-hot-toast').then(m => m.default.promise(
+                        api.sendSentinelCommand('RESET_MODELS'),
+                        { loading: "Resetting AI models...", success: "AI models reverted to baseline", error: "Failed to reset models" }
+                      ));
+                    }
+                  }}
+                  className="w-full flex items-center justify-between px-4 py-2 bg-soc-red/10 hover:bg-soc-red/20 text-soc-red rounded-lg border border-soc-red/20 transition-all font-mono text-xs"
+                >
+                  Reset AI Models to Baseline
+                  <Skull className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+
+            {/* Deception Controls */}
+            <div className="mt-8 pt-6 border-t border-soc-border">
+              <h4 className="text-xs font-bold text-soc-cyan tracking-widest uppercase mb-4 flex items-center gap-2">
+                <Globe className="w-4 h-4" />
+                Deception Engine
+              </h4>
+              <div className="grid grid-cols-1 gap-3">
+                <button
+                  onClick={async () => {
+                    import('react-hot-toast').then(m => m.default.promise(
+                      api.sendSentinelCommand('DEPLOY_HONEYPOT'),
+                      { loading: "Deploying generic honeypot service...", success: "Honeypot deployed to catch scanners", error: "Failed to deploy honeypot" }
+                    ));
+                  }}
+                  className="w-full flex items-center justify-between px-4 py-2 bg-soc-cyan/10 hover:bg-soc-cyan/20 text-soc-cyan rounded-lg border border-soc-cyan/20 transition-all font-mono text-xs"
+                >
+                  Deploy Target Honeypot
+                  <Server className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={async () => {
+                    import('react-hot-toast').then(m => m.default.promise(
+                      api.sendSentinelCommand('DEPLOY_HONEY_CREDENTIALS'),
+                      { loading: "Injecting memory traps...", success: "Honey credentials deployed", error: "Failed to deploy credentials" }
+                    ));
+                  }}
+                  className="w-full flex items-center justify-between px-4 py-2 bg-soc-green/10 hover:bg-soc-green/20 text-soc-green rounded-lg border border-soc-green/20 transition-all font-mono text-xs"
+                >
+                  Inject Honey Credentials
+                  <Database className="w-3 h-3" />
+                </button>
               </div>
             </div>
           </div>

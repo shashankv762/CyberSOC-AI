@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { authUtils } from '../utils/auth.js';
 import { adminAuth } from '../firebaseAdmin.js';
 import jwt from 'jsonwebtoken';
+import fs from 'fs';
 
 export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
@@ -37,7 +38,7 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
         return next();
       } catch (verifyErr) {
         console.error(`Firebase token verification failed explicitly:`, verifyErr);
-        require('fs').appendFileSync('/app/applet/auth_errors.log', new Date().toISOString() + ' - ' + (verifyErr instanceof Error ? verifyErr.message : String(verifyErr)) + '\n');
+        fs.appendFileSync('/app/applet/auth_errors.log', new Date().toISOString() + ' - ' + (verifyErr instanceof Error ? verifyErr.message : String(verifyErr)) + '\n');
         return res.status(401).json({ error: 'Unauthorized: Invalid Firebase token', details: verifyErr instanceof Error ? verifyErr.message : String(verifyErr) });
       }
     }

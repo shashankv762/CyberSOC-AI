@@ -66,7 +66,7 @@ export const api = {
   
   // IPS Endpoints
   getBlockedIps: () => client.get('/ips/blocked'),
-  blockIp: (ip, reason) => client.post('/ips/block', { ip, reason }),
+  blockIp: (ip, reason, duration) => client.post('/ips/block', { ip, reason, duration }),
   unblockIp: (ip) => client.delete(`/ips/unblock/${ip}`),
 
   // Phase 1 Endpoints
@@ -76,7 +76,5 @@ export const api = {
 
   // Sentinel AI Brain
   getSentinelHistory: () => client.get('/sentinel/history'),
-
-  // Forensics
-  generateDeepAnalysis: (query, searchType, logs) => client.post('/forensics/analyze', { query, searchType, logs })
+  sendSentinelCommand: (action: string) => client.post('/sentinel/command', { action }).then(res => res.data)
 };

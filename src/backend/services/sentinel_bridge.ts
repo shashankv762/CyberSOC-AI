@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 
 class SentinelBridge extends EventEmitter {
   private pythonProcess: ChildProcess | null = null;
-  private isReady = false;
+  public isReady = false;
   private history: any[] = [];
 
   start() {
@@ -55,6 +55,26 @@ class SentinelBridge extends EventEmitter {
               // Keep only last 50
               if (this.history.length > 50) this.history.pop();
               
+              // Process Autonomous Actions from the Brain
+              const action = msg.data.action;
+              const executions = msg.data.execution_details || [];
+              if (action && action !== "MANUAL_REVIEW" && action !== "IGNORE" && action !== "LLM_DECISION") {
+                const sourceIp = msg.data.event?.source_ip;
+                if (sourceIp) {
+                  import('./ips_service.js').then(({ ipsService }) => {
+                    const reasoning = msg.data.reasoning || "Autonomous Sentinel RL Response";
+                    
+                    if (action === "BLOCK_IP") {
+                      ipsService.blockIp(sourceIp, `[RL Brain] ${reasoning}`, 1); // 1 hr block
+                      console.log(`[SENTINEL AUTO-RESPONSE] Blocked IP: ${sourceIp}`);
+                    } else if (action === "ISOLATE_ENDPOINT") {
+                      ipsService.blockIp(sourceIp, `[RL Brain] Endpoint Isolation: ${reasoning}`, 24); // 24 hr block
+                      console.log(`[SENTINEL AUTO-RESPONSE] Isolated Endpoint IP: ${sourceIp}`);
+                    }
+                  }).catch(e => console.error("Failed to dynamically import ipsService:", e));
+                }
+              }
+
               this.emit('result', msg.data);
             } else if (msg.error) {
               console.error(`[SENTINEL ERROR] ${msg.error}`);

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { X, ShieldAlert, Cpu, ListChecks, Code, MessageSquare, SearchCode, Database, Zap } from 'lucide-react';
+import { X, ShieldAlert, Cpu, ListChecks, Code, MessageSquare, SearchCode, Database, Zap, ShieldOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { api } from '../api/client';
+import toast from 'react-hot-toast';
 
 interface IncidentDetailProps {
   incident: any;
@@ -11,8 +13,33 @@ interface IncidentDetailProps {
 
 export default function IncidentDetail({ incident, onClose, onAskAI, onForensics }: IncidentDetailProps) {
   const [showPayload, setShowPayload] = useState(false);
+  const [isIsolating, setIsIsolating] = useState(false);
 
   if (!incident) return null;
+
+  const handleIsolateEndpoint = async () => {
+    if (!incident.source_ip) {
+      toast.error("Cannot isolate: No source IP associated with this incident.");
+      return;
+    }
+
+    // Double confirmation for real actions in a SOC UI is good practice
+    if (!window.confirm(`Respond Engine WARNING: Are you sure you want to completely isolate endpoint ${incident.source_ip} from the network?`)) {
+      return;
+    }
+
+    setIsIsolating(true);
+    try {
+      // 24 Hour Isolation Block
+      await api.blockIp(incident.source_ip, `Response Engine triggered network isolation for Critical Incident #${incident.id}`, 24);
+      toast.success(`Endpoint ${incident.source_ip} successfully isolated. IPS rules applied.`);
+    } catch (err) {
+      console.error("Failed to isolate endpoint:", err);
+      toast.error("Failed to trigger network isolation.");
+    } finally {
+      setIsIsolating(false);
+    }
+  };
 
   let mitigations: string[] = [];
   try {
@@ -220,13 +247,25 @@ export default function IncidentDetail({ incident, onClose, onAskAI, onForensics
           </div>
 
           {/* Footer Actions */}
-          <div className="p-6 border-t border-soc-border bg-soc-bg/50 flex gap-3">
+          <div className="p-6 border-t border-soc-border bg-soc-bg/50 flex flex-wrap gap-3">
             <button
               onClick={() => onAskAI(incident)}
-              className="flex-1 flex items-center justify-center gap-2 py-3 bg-soc-purple text-white font-bold rounded-xl hover:opacity-90 transition-opacity"
+              className="flex-[2] min-w-[200px] flex items-center justify-center gap-2 py-3 bg-soc-purple text-white font-bold rounded-xl hover:opacity-90 transition-opacity"
             >
               <MessageSquare className="w-5 h-5" />
-              Ask AI About This Incident
+              Ask AI About This
+            </button>
+            <button
+              onClick={handleIsolateEndpoint}
+              disabled={isIsolating}
+              className={`flex-1 min-w-[170px] flex items-center justify-center gap-2 py-3 font-bold rounded-xl transition-all ${
+                incident.severity === 'Critical'
+                  ? 'bg-soc-red/20 text-soc-red hover:bg-soc-red/40 border border-soc-red/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]'
+                  : 'bg-soc-surface border border-soc-border hover:bg-soc-border text-soc-text'
+              } disabled:opacity-50`}
+            >
+              <ShieldOff className="w-5 h-5" />
+              {isIsolating ? 'Isolating...' : 'Isolate Endpoint'}
             </button>
             <button
               onClick={onClose}

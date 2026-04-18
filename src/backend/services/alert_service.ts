@@ -1,5 +1,6 @@
 import { db } from "../database.js";
 import { sentinelBridge } from "./sentinel_bridge.js";
+import { sseService } from "./sse_service.js";
 
 export const settingsService = {
   getSettings: () => {
@@ -7,7 +8,9 @@ export const settingsService = {
     const settings: Record<string, any> = {
       auto_ack_enabled: false,
       auto_ack_severity: 'Low',
-      auto_ack_delay_minutes: 60
+      auto_ack_delay_minutes: 60,
+      anomaly_threshold: 0.35,
+      critical_threshold: 0.85
     };
     
     for (const row of rows) {
@@ -58,6 +61,18 @@ export const alertService = {
       });
     } catch (e) {
       console.error("Failed to send alert to Sentinel:", e);
+    }
+    
+    // Broadcast via SSE
+    try {
+      sseService.broadcast('new_alert', {
+        id: info.lastInsertRowid,
+        severity: alert.severity,
+        reason: alert.reason,
+        log_id: alert.log_id
+      });
+    } catch (e) {
+      console.error("Failed to broadcast SSE:", e);
     }
 
     return info.lastInsertRowid;

@@ -133,6 +133,11 @@ export async function initDb() {
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    
+    // Auto-unblock column
+    try {
+      db.exec(`ALTER TABLE blocked_ips ADD COLUMN expires_at DATETIME`);
+    } catch (e) { /* Ignore if already exists */ }
 
     // Seed admin user if not exists
     const adminExists = db.prepare("SELECT * FROM users WHERE username = 'admin'").get();
